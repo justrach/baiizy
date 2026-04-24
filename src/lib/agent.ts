@@ -1,13 +1,6 @@
 import { generateObject, tool } from "ai";
 import { z } from "zod";
 
-const INTENT_KEYWORDS: Record<string, string[]> = {
-  work: ["quiet cafe", "coworking cafe", "study cafe"],
-  lunch: ["lunch", "lunch spot", "cheap eats"],
-  supper: ["late night food", "supper", "24 hour"],
-  date: ["wine bar", "dessert", "romantic restaurant"],
-  friend: ["bookstore cafe", "casual cafe", "tea house"],
-};
 
 type Place = {
   poi_id: string;
@@ -92,38 +85,51 @@ export type AgentInput = {
   focusIntent?: string;
 };
 
-const INTENT_KEYWORDS_SIMPLE: Record<string, string[]> = {
-  work: ["cafe"],
-  lunch: ["lunch"],
-  supper: ["restaurant"],
-  date: ["wine bar"],
-  friend: ["bookstore"],
+// Broader keyword map so recommendations aren't all bookstores etc.
+const INTENT_KEYWORDS: Record<string, string[]> = {
+  work: ["cafe", "coworking"],
+  lunch: ["lunch", "hawker"],
+  supper: ["supper", "noodle"],
+  date: ["wine bar", "dessert"],
+  friend: ["cafe", "bar"],
 };
-const MAX_CANDIDATES_TO_LLM = 8;
-const GRAB_LIMIT_PER_INTENT = 4;
+
+// Human-readable label so the AI describes recs in the user's language, not DB keys
+const INTENT_LABEL: Record<string, string> = {
+  work: "a deep-work spot",
+  lunch: "a lunch",
+  supper: "a late supper",
+  date: "a low-pressure date",
+  friend: "a friend hang",
+};
+
+const MAX_CANDIDATES_TO_LLM = 10;
+const GRAB_LIMIT_PER_KEYWORD = 3;
 const AGENT_TIMEOUT_MS = 20_000;
 
 export async function recommendPlaces(input: AgentInput) {
   const intents = input.focusIntent
     ? [input.focusIntent]
     : input.intents.length > 0
-    ? input.intents.slice(0, 2) // 2 intents max, not 3 — fewer grab calls
+    ? input.intents.slice(0, 2)
     : ["friend"];
 
   const candidates: Place[] = [];
   const seen = new Set<string>();
   for (const intent of intents) {
-    const keyword = (INTENT_KEYWORDS_SIMPLE[intent] ?? [intent])[0];
-    try {
-      const list = await searchGrab(keyword, input.currentLat, input.currentLng, GRAB_LIMIT_PER_INTENT);
-      for (const p of list) {
-        if (!seen.has(p.poi_id)) {
-          seen.add(p.poi_id);
-          candidates.push({ ...p, sourceIntent: intent } as Place & { sourceIntent: string });
+    const keywords = (INTENT_KEYWORDS[intent] ?? [intent]).slice(0, 2); // up to 2 keywords per intent
+    for (const keyword of keywords) {
+      try {
+        const list = await searchGrab(keyword, input.currentLat, input.currentLng, GRAB_LIMIT_PER_KEYWORD);
+        for (const p of list) {
+          if (!seen.has(p.poi_id)) {
+            seen.add(p.poi_id);
+            candidates.push({ ...p, sourceIntent: intent } as Place & { sourceIntent: string });
+          }
         }
+      } catch (e) {
+        console.warn(`Grab search failed for "${keyword}":`, e);
       }
-    } catch (e) {
-      console.warn(`Grab search failed for "${keyword}":`, e);
     }
   }
 
@@ -131,23 +137,34 @@ export async function recommendPlaces(input: AgentInput) {
     return { recommendations: [], candidatesFound: 0 };
   }
 
-  // Terser candidate list — saves tokens → faster generation
   const candidateText = candidates
     .slice(0, MAX_CANDIDATES_TO_LLM)
     .map((c: Place & { sourceIntent?: string }, i) =>
-      `${i + 1}. [${c.poi_id}] ${c.name} (${c.category}) — ${c.neighborhood ?? ""} · for:${c.sourceIntent ?? ""}`,
+      `${i + 1}. [${c.poi_id}] ${c.name} (${c.category}) — ${c.neighborhood ?? ""} · tag:${c.sourceIntent ?? ""}`,
     )
     .join("\n");
 
-  // Compact prompt — was ~1800 tokens, now ~400
-  const prompt = `Pick the top 3 places for this user from the candidates.
+  const focusLabel = INTENT_LABEL[intents[0]] ?? intents[0];
+  const isFocus = !!input.focusIntent;
 
-USER: intents=${input.intents.join("+")} · mode=${input.socialMode} · avail=${input.availability.join(",") || "flex"} · looking_for=${intents.join("+")}${input.bio ? ` · bio="${input.bio}"` : ""}
+  // When a focus intent is active, ONLY reason about that intent —
+  // do not mix the user's other saved intents into the recommendation text.
+  const userLine = isFocus
+    ? `USER: looking_for="${focusLabel}" · style=${input.socialMode}${input.bio ? ` · bio="${input.bio}"` : ""}`
+    : `USER: looking_for="${focusLabel}" · style=${input.socialMode} · avail=${input.availability.join(",") || "flex"}${input.bio ? ` · bio="${input.bio}"` : ""}`;
+
+  const prompt = `Pick the top 3 places for ${focusLabel}. Only recommend places that genuinely fit ${focusLabel} — ignore candidates that don't match even if they're good for something else.
+
+${userLine}
 
 CANDIDATES:
 ${candidateText}
 
-For each: grounded whyItFits (1 sentence, reference their profile, no filler), concrete suggestedMove (1 sentence action), matchScore 0-100.`;
+For each pick:
+- whyItFits: ONE sentence, grounded in why this spot works for ${focusLabel}. No generic filler, no cross-referencing other intents.
+- suggestedMove: ONE concrete sentence — what to do/say (e.g. "Text them: coffee at 10, leave by noon").
+- matchScore: 0-100 (how well it fits ${focusLabel} specifically).
+- matchingIntent: must equal "${intents[0]}"`;
 
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), AGENT_TIMEOUT_MS);

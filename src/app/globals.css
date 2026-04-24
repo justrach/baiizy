@@ -1,0 +1,192 @@
+@import "tailwindcss";
+@import "maplibre-gl/dist/maplibre-gl.css";
+
+:root {
+  --background: #f4efe3;
+  --foreground: #172019;
+  --paper: #fffaf0;
+  --ink-soft: #4f5a51;
+  --moss: #1f6b5d;
+  --clay: #b6522b;
+  --honey: #d79c52;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-manrope);
+  --font-serif: var(--font-fraunces);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  min-width: 320px;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-manrope), "Trebuchet MS", sans-serif;
+}
+
+::selection {
+  background: var(--honey);
+  color: var(--foreground);
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.map-grid {
+  background-image:
+    linear-gradient(rgba(23, 32, 25, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(23, 32, 25, 0.08) 1px, transparent 1px),
+    radial-gradient(circle at 20% 25%, rgba(31, 107, 93, 0.18), transparent 20%),
+    radial-gradient(circle at 80% 70%, rgba(182, 82, 43, 0.18), transparent 22%);
+  background-size: 34px 34px, 34px 34px, 100% 100%, 100% 100%;
+}
+
+.map-marker {
+  animation: marker-pulse 2.8s ease-in-out infinite;
+}
+
+.live-map-marker {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border: 3px solid rgba(255, 250, 240, 0.94);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 30% 26%, rgba(255, 255, 255, 0.36), transparent 26%),
+    linear-gradient(145deg, #2b8a78, #154f45);
+  box-shadow:
+    0 0 0 7px rgba(31, 107, 93, 0.16),
+    0 18px 42px rgba(7, 17, 12, 0.34);
+  color: var(--paper);
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 900;
+  isolation: isolate;
+  transition:
+    background 180ms ease,
+    transform 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.live-map-marker::before {
+  position: absolute;
+  inset: -14px;
+  z-index: -1;
+  border-radius: inherit;
+  background: radial-gradient(circle, rgba(31, 107, 93, 0.26), transparent 68%);
+  content: "";
+  transform: scale(0.76);
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.live-map-marker::after {
+  position: absolute;
+  right: 5px;
+  bottom: 4px;
+  width: 8px;
+  height: 8px;
+  border-radius: inherit;
+  background: rgba(255, 250, 240, 0.84);
+  content: "";
+}
+
+.live-map-marker:hover,
+.live-map-marker.is-selected {
+  background:
+    radial-gradient(circle at 30% 26%, rgba(255, 255, 255, 0.36), transparent 26%),
+    linear-gradient(145deg, #c86434, #8f391d);
+  box-shadow:
+    0 0 0 10px rgba(182, 82, 43, 0.18),
+    0 24px 54px rgba(7, 17, 12, 0.45);
+  transform: translateY(-3px) scale(1.12);
+}
+
+.live-map-marker:hover::before,
+.live-map-marker.is-selected::before {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.maplibregl-map {
+  font-family: var(--font-manrope), "Trebuchet MS", sans-serif;
+}
+
+.maplibregl-canvas {
+  outline: none;
+}
+
+.maplibregl-ctrl-group {
+  overflow: hidden;
+  border: 1px solid rgba(23, 32, 25, 0.12) !important;
+  border-radius: 18px !important;
+  background: rgba(255, 250, 240, 0.9) !important;
+  box-shadow: 0 18px 40px rgba(7, 17, 12, 0.22) !important;
+}
+
+.maplibregl-ctrl-group button {
+  width: 38px !important;
+  height: 38px !important;
+}
+
+.maplibregl-ctrl-attrib {
+  border-radius: 14px 0 0 0 !important;
+  background: rgba(255, 250, 240, 0.82) !important;
+  color: var(--foreground) !important;
+  font-weight: 800;
+}
+
+.rise-in {
+  animation: rise-in 760ms cubic-bezier(0.19, 1, 0.22, 1) both;
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(22px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes marker-pulse {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+    box-shadow: 0 14px 30px rgba(23, 32, 25, 0.28);
+  }
+
+  50% {
+    transform: translateY(-4px) scale(1.04);
+    box-shadow: 0 20px 38px rgba(23, 32, 25, 0.32);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
+  }
+}

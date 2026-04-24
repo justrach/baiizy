@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, or } from "drizzle-orm";
 import { db } from "@/db";
-import { checkins } from "@/db/schema";
+import { checkins, friendships, notifications } from "@/db/schema";
 import { auth } from "@/lib/auth";
 
 export async function GET() {
@@ -47,5 +47,39 @@ export async function POST(request: Request) {
     rating,
   }).returning();
 
-  return Response.json({ ok: true, checkin: row });
+  // Fan out a notification to every accepted friend
+  const uid = session.user.id;
+  const friendIds = await db
+    .select({ requesterId: friendships.requesterId, addresseeId: friendships.addresseeId })
+    .from(friendships)
+    .where(
+      and(
+        or(eq(friendships.requesterId, uid), eq(friendships.addresseeId, uid)),
+        eq(friendships.status, "accepted"),
+      ),
+    );
+  const recipients = friendIds
+    .map((f) => (f.requesterId === uid ? f.addresseeId : f.requesterId))
+    .filter((id): id is string => !!id && id !== uid);
+
+  if (recipients.length > 0) {
+    await db.insert(notifications).values(
+      recipients.map((rid) => ({
+        userId: rid,
+        actorId: uid,
+        kind: "checkin",
+        payload: {
+          name: body.name,
+          category: body.category ?? null,
+          address: body.address ?? null,
+          lat: typeof body.lat === "number" ? body.lat : null,
+          lng: typeof body.lng === "number" ? body.lng : null,
+          poiId: body.poi_id,
+          note: body.note ?? null,
+        },
+      })),
+    );
+  }
+
+  return Response.json({ ok: true, checkin: row, notified: recipients.length });
 }

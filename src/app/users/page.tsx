@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useSession } from "@/lib/auth-client";
 import PicksTab from "@/components/PicksTab";
+import NotificationBell from "@/components/NotificationBell";
 
 type Profile = { id: string; name: string; email: string; username: string | null; image: string | null; };
 type Friend = { friendshipId: number; friendId: string; friendName: string; friendEmail: string; friendUsername: string | null; friendImage: string | null; friendIntents: string[] | null; friendSocialMode: string | null; friendAvailability: string[] | null; friendBio: string | null; };
@@ -103,6 +104,7 @@ export default function UsersPage() {
             <span className="text-sm font-black uppercase tracking-[0.24em] text-[#172019]">Baiizy</span>
           </Link>
           <div className="flex items-center gap-2">
+            <NotificationBell />
             <Link href="/friends/map" className="rounded-2xl bg-[#1f6b5d] px-4 py-2 text-xs font-black text-[#fffaf0] hover:bg-[#255f55] transition">🌍 Live map</Link>
             <Link href="/events" className="rounded-2xl border border-[#1b271f]/10 px-4 py-2 text-xs font-black text-[#4b554c] hover:border-[#172019] hover:text-[#172019] transition">Events</Link>
             <Link href="/settings" className="rounded-2xl border border-[#1b271f]/10 px-4 py-2 text-xs font-black text-[#4b554c] hover:border-[#172019] hover:text-[#172019] transition">Settings</Link>

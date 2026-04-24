@@ -214,3 +214,18 @@ export const reviews = pgTable(
     index("reviews_poi_idx").on(t.poiId),
   ],
 );
+
+
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: serial("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+    actorId: text("actor_id").references(() => user.id, { onDelete: "set null" }),
+    kind: text("kind").notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+    read: boolean("read").notNull().default(false),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("notif_user_unread").on(t.userId, t.read, t.createdAt)],
+);

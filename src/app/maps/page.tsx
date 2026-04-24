@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { loadMapStyle } from "@/lib/fallback-style";
 import maplibregl, {
   type Map as MapLibreMap,
   type Marker as MapLibreMarker,
@@ -88,16 +89,9 @@ async function searchPlaces(query: string) {
   return data;
 }
 
-async function fetchMapStyle() {
-  const response = await fetch("/api/grab/style?theme=basic", {
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    throw new Error(`Style endpoint returned ${response.status}.`);
-  }
-
-  return (await response.json()) as RawMapStyle;
+async function fetchMapStyle(): Promise<{ style: RawMapStyle; fallback: boolean; reason?: string }> {
+  const { style, fallback, reason } = await loadMapStyle();
+  return { style: style as unknown as RawMapStyle, fallback, reason };
 }
 
 function describeStyle(style: RawMapStyle): StyleStatus {
@@ -176,7 +170,7 @@ export default function MapsPage() {
 
     const initMap = async () => {
       try {
-        const style = await fetchMapStyle();
+        const { style, fallback, reason } = await fetchMapStyle();
 
         if (cancelled || !mapContainerRef.current) {
           return;
@@ -201,7 +195,10 @@ export default function MapsPage() {
         requestAnimationFrame(() => {
           map?.resize();
         });
-        setStyleStatus(describeStyle(style));
+        setStyleStatus({
+          ...describeStyle(style),
+          message: fallback ? `Using OpenStreetMap (${reason ?? "Grab down"})` : "Raw GrabMaps style is live.",
+        });
         setMapReady(true);
       } catch (mapError) {
         if (cancelled) {

@@ -5,6 +5,7 @@ import Link from "next/link";
 import maplibregl, { type Map as MLMap, type Marker as MLMarker } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useSession } from "@/lib/auth-client";
+import { loadMapStyle } from "@/lib/fallback-style";
 
 type FriendLoc = {
   userId: string;
@@ -113,16 +114,18 @@ export default function FriendsMapPage() {
   const [styleReady, setStyleReady] = useState(false);
   const [loadError, setLoadError] = useState<string>("");
   const [selected, setSelected] = useState<FriendLoc | null>(null);
+  const [seeding, setSeeding] = useState(false);
+  const [usingFallback, setUsingFallback] = useState(false);
+  const [fallbackReason, setFallbackReason] = useState("");
 
   // Load style + init map
   useEffect(() => {
     let cancelled = false;
     const init = async () => {
       try {
-        const res = await fetch("/api/grab/style?theme=basic", { cache: "no-store" });
-        if (!res.ok) throw new Error(`Style endpoint returned ${res.status}`);
-        const style = await res.json();
+        const { style, fallback, reason } = await loadMapStyle();
         if (cancelled || !containerRef.current) return;
+        if (fallback) { setUsingFallback(true); setFallbackReason(reason ?? ""); }
 
         const map = new maplibregl.Map({
           container: containerRef.current,
@@ -155,13 +158,24 @@ export default function FriendsMapPage() {
     };
   }, []);
 
+  const loadFriends = async () => {
+    try {
+      const r = await fetch("/api/friends/locations");
+      const text = await r.text();
+      if (!text) { setFriends([]); return; }
+      const data = JSON.parse(text);
+      setFriends(data.friends ?? []);
+      setMe(data.me ?? "");
+    } catch (e) {
+      console.warn("Friend location fetch failed:", e);
+      setFriends([]);
+    }
+  };
+
   // Load friend locations
   useEffect(() => {
     if (!session.data?.user) return;
-    fetch("/api/friends/locations").then((r) => r.json()).then((data) => {
-      setFriends(data.friends ?? []);
-      setMe(data.me ?? "");
-    });
+    loadFriends();
   }, [session.data?.user]);
 
   // Render markers when map + data ready
@@ -233,6 +247,19 @@ export default function FriendsMapPage() {
             <div className="w-12" />
           </div>
         </div>
+
+        {/* GrabMaps-down banner */}
+        {usingFallback && (
+          <div className="px-4 mt-3 pointer-events-auto">
+            <div className="flex items-center justify-center gap-2 rounded-full bg-[#d79c52] px-4 py-2 shadow-[0_10px_30px_rgba(215,156,82,0.3)] backdrop-blur">
+              <span className="size-2 rounded-full bg-[#172019] animate-pulse" />
+              <span className="text-xs font-black uppercase tracking-[0.18em] text-[#172019]">
+                Not GrabMaps · using OpenStreetMap fallback
+              </span>
+              {fallbackReason && <span className="text-[0.62rem] font-bold text-[#172019]/60">({fallbackReason})</span>}
+            </div>
+          </div>
+        )}
 
         {/* Horizontal friend strip */}
         {otherFriends.length > 0 && (
@@ -323,6 +350,19 @@ export default function FriendsMapPage() {
             <p className="mt-2 text-sm font-semibold text-[#536055]">
               Add friends on the <Link href="/users" className="underline font-black">friends page</Link>, then tap &quot;Use my location&quot; on the Picks tab.
             </p>
+            <button
+              onClick={async () => {
+                setSeeding(true);
+                const r = await fetch("/api/dev/seed-friends", { method: "POST" });
+                const data = await r.json().catch(() => null);
+                setSeeding(false);
+                if (r.ok) { await loadFriends(); } else alert(data?.error ?? "Seed failed");
+              }}
+              disabled={seeding}
+              className="mt-4 w-full rounded-2xl bg-[#1f6b5d] px-4 py-3 text-sm font-black text-[#fffaf0] hover:bg-[#255f55] transition disabled:opacity-60"
+            >
+              {seeding ? "Summoning friends..." : "🪄 Seed 6 demo friends across Singapore"}
+            </button>
           </div>
         </div>
       )}

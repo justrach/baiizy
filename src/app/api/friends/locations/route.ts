@@ -1,5 +1,5 @@
 import { headers } from "next/headers";
-import { and, eq, isNotNull, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { friendships, userPreferences } from "@/db/schema";
 import { user } from "@/db/auth-schema";
@@ -11,7 +11,6 @@ export async function GET() {
 
   const uid = session.user.id;
 
-  // Include me + accepted friends
   const friendIds = await db
     .select({
       friendId: sql<string>`CASE WHEN ${friendships.requesterId} = ${uid} THEN ${friendships.addresseeId} ELSE ${friendships.requesterId} END`,
@@ -24,7 +23,7 @@ export async function GET() {
       ),
     );
 
-  const ids = [uid, ...friendIds.map((r) => r.friendId)];
+  const ids = Array.from(new Set([uid, ...friendIds.map((r) => r.friendId)]));
 
   const rows = await db
     .select({
@@ -44,7 +43,7 @@ export async function GET() {
       and(
         isNotNull(userPreferences.currentLat),
         isNotNull(userPreferences.currentLng),
-        sql`${user.id} = ANY(${ids})`,
+        inArray(user.id, ids),
       ),
     );
 

@@ -13,6 +13,7 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const focusIntent = searchParams.get("intent") ?? undefined;
+  const customQuery = searchParams.get("q")?.trim() ?? undefined;
 
   const [prefs] = await db
     .select()
@@ -60,6 +61,7 @@ export async function GET(request: Request) {
       currentLat: lat,
       currentLng: lng,
       focusIntent,
+      customQuery,
     });
 
     return Response.json({

@@ -3,6 +3,15 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
+type AvailSlot = {
+  slot: string;
+  label: string;
+  suggestedIntent: string;
+  meFree: boolean;
+  friends: Array<{ userId: string; name: string; username: string | null; image: string | null }>;
+  count: number;
+};
+
 type NearbyFriend = {
   userId: string;
   name: string;
@@ -72,6 +81,8 @@ export default function PicksTab() {
   const [nearby, setNearby] = useState<NearbyFriend[]>([]);
   const [dismissedNearby, setDismissedNearby] = useState<Set<string>>(new Set());
   const [creatingEventFor, setCreatingEventFor] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [availability, setAvailability] = useState<AvailSlot[]>([]);
   const router = useRouter();
 
   const createQuickEvent = async (friendUserId: string) => {
@@ -92,6 +103,14 @@ export default function PicksTab() {
       setCreatingEventFor(null);
     }
   };
+
+  useEffect(() => {
+    fetch("/api/friends/availability")
+      .then((r) => r.text())
+      .then((t) => t ? JSON.parse(t) : null)
+      .then((d) => setAvailability((d?.overlap as AvailSlot[] | undefined) ?? []))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const run = async () => {
@@ -157,11 +176,14 @@ export default function PicksTab() {
     );
   };
 
-  const fetchRecs = useCallback(async (intent?: string) => {
+  const fetchRecs = useCallback(async (intent?: string, searchQuery?: string) => {
     setLoading(true);
     setError("");
     try {
-      const url = intent ? `/api/recommendations?intent=${intent}` : "/api/recommendations";
+      const params = new URLSearchParams();
+      if (intent) params.set("intent", intent);
+      if (searchQuery) params.set("q", searchQuery);
+      const url = params.toString() ? `/api/recommendations?${params}` : "/api/recommendations";
       const res = await fetch(url);
       const data = await res.json();
       if (!res.ok) {
@@ -249,6 +271,77 @@ export default function PicksTab() {
         </div>
       )}
 
+      {/* Freeform search */}
+      <form
+        onSubmit={(e) => { e.preventDefault(); fetchRecs(focusIntent ?? undefined, query || undefined); }}
+        className="rounded-[1.5rem] border border-[#1b271f]/10 bg-[#fffaf0]/82 p-1 shadow-sm backdrop-blur flex items-center gap-1"
+      >
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Try: 'dessert walk' or 'loud bar after work' or 'quiet coffee with Maya'"
+          className="flex-1 rounded-[1.2rem] bg-transparent px-4 py-2.5 text-sm font-bold text-[#172019] outline-none placeholder:text-[#899083]"
+        />
+        {query && (
+          <button type="button" onClick={() => setQuery("")} className="text-xs font-black text-[#899083] px-2">
+            clear
+          </button>
+        )}
+        <button type="submit" className="rounded-[1.2rem] bg-[#172019] px-4 py-2.5 text-xs font-black text-[#fffaf0] hover:bg-[#2b372e] transition">
+          Search
+        </button>
+      </form>
+
+      {/* 🗓 Free together */}
+      {availability.length > 0 && availability.some((a) => a.meFree && a.friends.length > 0) && (
+        <div className="rounded-[1.5rem] border border-[#1b271f]/10 bg-[#172019] p-4 text-[#fffaf0] shadow-sm">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-xs font-black uppercase tracking-[0.22em] text-[#d79c52]">🗓 Free together</span>
+            <span className="text-[0.62rem] font-bold text-[#d7c9a8]">when you &amp; friends overlap</span>
+          </div>
+          <div className="space-y-2">
+            {availability
+              .filter((a) => a.meFree && a.friends.length > 0)
+              .slice(0, 4)
+              .map((a) => {
+                const stacked = a.friends.slice(0, 4);
+                const extra = a.friends.length - stacked.length;
+                return (
+                  <button
+                    key={a.slot}
+                    onClick={() => { setFocusIntent(a.suggestedIntent); fetchRecs(a.suggestedIntent, undefined); }}
+                    className="w-full flex items-center gap-3 rounded-2xl border border-[#fffaf0]/10 bg-[#fffaf0]/5 p-3 hover:bg-[#fffaf0]/10 transition"
+                  >
+                    <div className="flex -space-x-2 flex-shrink-0">
+                      {stacked.map((f) =>
+                        f.image ? (
+                          <img key={f.userId} src={f.image} alt="" className="size-8 rounded-full object-cover border-2 border-[#172019]" />
+                        ) : (
+                          <span key={f.userId} className="grid size-8 place-items-center rounded-full bg-[#b6522b] text-[0.62rem] font-black text-[#fffaf0] border-2 border-[#172019]">
+                            {f.name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2)}
+                          </span>
+                        ),
+                      )}
+                      {extra > 0 && (
+                        <span className="grid size-8 place-items-center rounded-full bg-[#fffaf0]/15 text-[0.62rem] font-black text-[#fffaf0] border-2 border-[#172019]">
+                          +{extra}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex-1 text-left min-w-0">
+                      <p className="font-black text-sm">{a.label}</p>
+                      <p className="text-[0.62rem] font-bold text-[#d7c9a8]">
+                        {a.friends.length} friend{a.friends.length === 1 ? "" : "s"} free · suggests {a.suggestedIntent}
+                      </p>
+                    </div>
+                    <span className="text-xs font-black text-[#d79c52] flex-shrink-0">Show picks →</span>
+                  </button>
+                );
+              })}
+          </div>
+        </div>
+      )}
+
       {/* Location + intent controls */}
       <div className="rounded-[1.5rem] border border-[#1b271f]/10 bg-[#fffaf0]/82 p-4 shadow-sm backdrop-blur">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
@@ -277,7 +370,7 @@ export default function PicksTab() {
           {intents.map((i) => (
             <button
               key={i ?? "all"}
-              onClick={() => { setFocusIntent(i); fetchRecs(i ?? undefined); }}
+              onClick={() => { setFocusIntent(i); fetchRecs(i ?? undefined, query || undefined); }}
               className={`rounded-full px-3 py-1.5 text-xs font-black transition ${
                 focusIntent === i
                   ? "bg-[#172019] text-[#fffaf0]"
@@ -291,7 +384,7 @@ export default function PicksTab() {
 
         {recs.length === 0 && !loading && (
           <button
-            onClick={() => fetchRecs()}
+            onClick={() => fetchRecs(focusIntent ?? undefined, query || undefined)}
             className="mt-4 w-full rounded-2xl bg-[#172019] py-3 text-sm font-black text-[#fffaf0] hover:bg-[#2b372e] transition"
           >
             🤖 Get AI recommendations

@@ -83,6 +83,7 @@ export type AgentInput = {
   currentLat: number;
   currentLng: number;
   focusIntent?: string;
+  customQuery?: string;   // freeform text overrides keyword-derived Grab search
 };
 
 // Broader keyword map so recommendations aren't all bookstores etc.
@@ -129,23 +130,27 @@ export async function recommendPlaces(input: AgentInput) {
   // Fetch candidates
   const rawCandidates: (Place & { sourceIntent?: string; distanceKm?: number })[] = [];
   const seen = new Set<string>();
-  for (const intent of intents) {
-    const keywords = (INTENT_KEYWORDS[intent] ?? [intent]).slice(0, 2);
-    for (const keyword of keywords) {
-      try {
-        const list = await searchGrab(keyword, input.currentLat, input.currentLng, GRAB_LIMIT_PER_KEYWORD);
-        for (const p of list) {
-          if (seen.has(p.poi_id)) continue;
-          seen.add(p.poi_id);
-          const distanceKm =
-            p.lat !== null && p.lng !== null
-              ? haversineKm({ lat: input.currentLat, lng: input.currentLng }, { lat: p.lat as number, lng: p.lng as number })
-              : Infinity;
-          rawCandidates.push({ ...p, sourceIntent: intent, distanceKm });
-        }
-      } catch (e) {
-        console.warn(`Grab search failed for "${keyword}":`, e);
+
+  const keywordList: { keyword: string; tag: string }[] = input.customQuery
+    ? [{ keyword: input.customQuery, tag: "custom" }]
+    : intents.flatMap((intent) =>
+        (INTENT_KEYWORDS[intent] ?? [intent]).slice(0, 2).map((keyword) => ({ keyword, tag: intent })),
+      );
+
+  for (const { keyword, tag } of keywordList) {
+    try {
+      const list = await searchGrab(keyword, input.currentLat, input.currentLng, GRAB_LIMIT_PER_KEYWORD);
+      for (const p of list) {
+        if (seen.has(p.poi_id)) continue;
+        seen.add(p.poi_id);
+        const distanceKm =
+          p.lat !== null && p.lng !== null
+            ? haversineKm({ lat: input.currentLat, lng: input.currentLng }, { lat: p.lat as number, lng: p.lng as number })
+            : Infinity;
+        rawCandidates.push({ ...p, sourceIntent: tag, distanceKm });
       }
+    } catch (e) {
+      console.warn(`Grab search failed for "${keyword}":`, e);
     }
   }
 
@@ -183,8 +188,10 @@ export async function recommendPlaces(input: AgentInput) {
     .join("\n");
 
 
-  const focusLabel = INTENT_LABEL[intents[0]] ?? intents[0];
-  const isFocus = !!input.focusIntent;
+  const focusLabel = input.customQuery
+    ? `"${input.customQuery}"`
+    : INTENT_LABEL[intents[0]] ?? intents[0];
+  const isFocus = !!input.focusIntent || !!input.customQuery;
 
   // When a focus intent is active, ONLY reason about that intent —
   // do not mix the user's other saved intents into the recommendation text.
@@ -203,7 +210,7 @@ For each pick:
 - whyItFits: ONE sentence, grounded in why this spot works for ${focusLabel}. No generic filler, no cross-referencing other intents.
 - suggestedMove: ONE concrete sentence — what to do/say (e.g. "Text them: coffee at 10, leave by noon").
 - matchScore: 0-100 (how well it fits ${focusLabel} specifically).
-- matchingIntent: must equal "${intents[0]}"`;
+- matchingIntent: must equal "${input.customQuery ? (input.focusIntent ?? intents[0]) : intents[0]}"`;
 
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), AGENT_TIMEOUT_MS);

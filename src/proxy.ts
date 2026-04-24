@@ -35,5 +35,6 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
+  runtime: "nodejs", // postgres.js + drizzle need the Node runtime (not Edge)
   matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
 };

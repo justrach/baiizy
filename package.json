@@ -12,6 +12,7 @@
     "db:setup": "drizzle-kit push && tsx src/db/seed.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1036.0",
     "better-auth": "^1.6.8",
     "drizzle-orm": "^0.45.2",
     "maplibre-gl": "^5.24.0",

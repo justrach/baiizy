@@ -19,6 +19,8 @@ export async function GET() {
       friendId: user.id,
       friendName: user.name,
       friendEmail: user.email,
+      friendUsername: user.username,
+      friendImage: user.image,
       friendIntents: userPreferences.intents,
       friendSocialMode: userPreferences.socialMode,
       friendAvailability: userPreferences.availability,

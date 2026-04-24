@@ -16,6 +16,8 @@ export async function GET() {
       requesterId: user.id,
       requesterName: user.name,
       requesterEmail: user.email,
+      requesterUsername: user.username,
+      requesterImage: user.image,
     })
     .from(friendships)
     .innerJoin(user, eq(friendships.requesterId, user.id))

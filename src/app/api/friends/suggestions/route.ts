@@ -24,7 +24,7 @@ export async function GET() {
     WITH me AS (
       SELECT embedding FROM user_preferences WHERE user_id = ${uid} AND embedding IS NOT NULL
     )
-    SELECT u.id, u.name, u.email, up.intents, up.social_mode, up.bio,
+    SELECT u.id, u.name, u.email, u.username, u.image, up.intents, up.social_mode, up.bio,
            1 - (up.embedding <=> (SELECT embedding FROM me)) AS match_score
     FROM "user" u
     INNER JOIN user_preferences up ON up.user_id = u.id

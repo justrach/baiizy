@@ -1,15 +1,24 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { signOut, useSession } from "@/lib/auth-client";
+import { useSession } from "@/lib/auth-client";
+
+type Profile = {
+  id: string;
+  name: string;
+  email: string;
+  username: string | null;
+  image: string | null;
+};
 
 type Friend = {
   friendshipId: number;
   friendId: string;
   friendName: string;
   friendEmail: string;
+  friendUsername: string | null;
+  friendImage: string | null;
   friendIntents: string[] | null;
   friendSocialMode: string | null;
   friendAvailability: string[] | null;
@@ -21,6 +30,8 @@ type FriendRequest = {
   requesterId: string;
   requesterName: string;
   requesterEmail: string;
+  requesterUsername: string | null;
+  requesterImage: string | null;
   createdAt: string;
 };
 
@@ -28,6 +39,8 @@ type Suggestion = {
   id: string;
   name: string;
   email: string;
+  username: string | null;
+  image: string | null;
   intents: string[] | null;
   social_mode: string | null;
   bio: string | null;
@@ -38,6 +51,8 @@ type SearchResult = {
   id: string;
   name: string;
   email: string;
+  username: string | null;
+  image: string | null;
 };
 
 const INTENT_LABELS: Record<string, string> = {
@@ -49,16 +64,35 @@ const INTENT_LABELS: Record<string, string> = {
 };
 
 const COLORS = ["#1f6b5d", "#8a6d2f", "#b6522b", "#2f607f", "#8a3f38", "#c7812f"];
+const initials = (name: string) => name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
 
-function initials(name: string) {
-  return name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
+function Avatar({ image, name, size = 48, id }: { image: string | null; name: string; size?: number; id: string }) {
+  const color = COLORS[id.charCodeAt(0) % COLORS.length];
+  if (image) {
+    return (
+      <img
+        src={image}
+        alt={name}
+        className="rounded-full object-cover flex-shrink-0"
+        style={{ width: size, height: size }}
+      />
+    );
+  }
+  return (
+    <div
+      className="grid place-items-center rounded-full font-black text-[#fffaf0] flex-shrink-0"
+      style={{ width: size, height: size, backgroundColor: color, fontSize: size * 0.32 }}
+    >
+      {initials(name)}
+    </div>
+  );
 }
 
 export default function UsersPage() {
   const session = useSession();
-  const router = useRouter();
   const user = session.data?.user;
 
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [friends, setFriends] = useState<Friend[]>([]);
   const [requests, setRequests] = useState<FriendRequest[]>([]);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
@@ -68,40 +102,33 @@ export default function UsersPage() {
   const [sending, setSending] = useState<string | null>(null);
   const [sent, setSent] = useState<Set<string>>(new Set());
   const [tab, setTab] = useState<"suggested" | "friends" | "requests" | "find">("suggested");
-  const [loadingData, setLoadingData] = useState(true);
+  const [loading, setLoading] = useState(true);
 
   const loadAll = useCallback(async () => {
-    const [fr, rq, sg] = await Promise.all([
+    setLoading(true);
+    const [fr, rq, sg, pr] = await Promise.all([
       fetch("/api/friends").then((r) => r.json()).catch(() => []),
       fetch("/api/friends/requests").then((r) => r.json()).catch(() => []),
       fetch("/api/friends/suggestions").then((r) => r.json()).catch(() => []),
+      fetch("/api/user/profile").then((r) => r.json()).catch(() => null),
     ]);
     setFriends(Array.isArray(fr) ? fr : []);
     setRequests(Array.isArray(rq) ? rq : []);
     setSuggestions(Array.isArray(sg) ? sg : []);
-    setLoadingData(false);
+    setProfile(pr);
+    setLoading(false);
   }, []);
 
   useEffect(() => {
-    if (user) {
-      const timer = window.setTimeout(() => {
-        void loadAll();
-      }, 0);
-
-      return () => window.clearTimeout(timer);
-    }
+    if (user) loadAll();
   }, [user, loadAll]);
 
   useEffect(() => {
     const t = setTimeout(async () => {
-      if (!searchEmail || searchEmail.length < 3) {
-        setSearchResults([]);
-        return;
-      }
+      if (!searchEmail || searchEmail.length < 2) { setSearchResults([]); return; }
       setSearching(true);
       const res = await fetch(`/api/users/search?email=${encodeURIComponent(searchEmail)}`);
-      const data = await res.json();
-      setSearchResults(data);
+      setSearchResults(await res.json());
       setSearching(false);
     }, 350);
     return () => clearTimeout(t);
@@ -110,31 +137,28 @@ export default function UsersPage() {
   const sendRequest = async (addresseeEmail: string) => {
     setSending(addresseeEmail);
     await fetch("/api/friends", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ addresseeEmail }),
     });
     setSent((prev) => new Set(prev).add(addresseeEmail));
     setSending(null);
-    // refresh suggestions so they drop out of the list
-    void loadAll();
+    loadAll();
   };
 
   const respondToRequest = async (id: number, status: "accepted" | "declined") => {
     await fetch(`/api/friends/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
     });
-    void loadAll();
+    loadAll();
   };
 
   const removeFriend = async (id: number) => {
     await fetch(`/api/friends/${id}`, { method: "DELETE" });
-    void loadAll();
+    loadAll();
   };
 
-  if (!user) {
+  if (!user || !profile) {
     return (
       <div className="min-h-screen bg-[#fffaf0] flex items-center justify-center">
         <div className="text-center">
@@ -147,8 +171,6 @@ export default function UsersPage() {
     );
   }
 
-  const avatarColor = COLORS[user.name.charCodeAt(0) % COLORS.length];
-
   return (
     <div className="min-h-screen bg-[#fffaf0]">
       <header className="sticky top-0 z-10 border-b border-[#1b271f]/10 bg-[#fffaf0]/90 backdrop-blur-md px-5 py-4">
@@ -158,39 +180,33 @@ export default function UsersPage() {
             <span className="text-sm font-black uppercase tracking-[0.24em] text-[#172019]">Baiizy</span>
           </Link>
           <div className="flex items-center gap-3">
-            <div
-              className="grid size-9 place-items-center rounded-full text-xs font-black text-[#fffaf0]"
-              style={{ backgroundColor: avatarColor }}
+            <Link
+              href="/settings"
+              className="rounded-2xl border border-[#1b271f]/10 px-4 py-2 text-xs font-black text-[#4b554c] hover:border-[#172019] hover:text-[#172019] transition"
             >
-              {initials(user.name)}
-            </div>
-            <button
-              onClick={() => signOut().then(() => router.push("/login"))}
-              className="rounded-2xl border border-[#1b271f]/10 px-4 py-2 text-xs font-black text-[#4b554c] hover:border-[#b6522b] hover:text-[#b6522b] transition"
-            >
-              Sign out
-            </button>
+              Settings
+            </Link>
+            <Link href="/settings">
+              <Avatar image={profile.image} name={profile.name} size={36} id={profile.id} />
+            </Link>
           </div>
         </div>
       </header>
 
       <div className="mx-auto max-w-3xl px-5 py-8">
+        {/* Profile card */}
         <div className="rounded-[2rem] bg-[#172019] p-6 text-[#fffaf0] mb-6">
           <div className="flex items-start gap-4">
-            <div
-              className="grid size-16 place-items-center rounded-full text-xl font-black text-[#fffaf0] shadow-xl flex-shrink-0"
-              style={{ backgroundColor: avatarColor }}
-            >
-              {initials(user.name)}
-            </div>
+            <Avatar image={profile.image} name={profile.name} size={64} id={profile.id} />
             <div className="flex-1 min-w-0">
-              <h1 className="font-serif text-2xl font-black tracking-[-0.04em]">{user.name}</h1>
-              <p className="text-sm text-[#d7c9a8] mt-1">{user.email}</p>
+              <h1 className="font-serif text-2xl font-black tracking-[-0.04em]">{profile.name}</h1>
+              {profile.username && <p className="text-sm text-[#d7c9a8]">@{profile.username}</p>}
+              <p className="text-xs text-[#d7c9a8]/70 mt-1">{profile.email}</p>
               <div className="mt-3 flex flex-wrap gap-2">
-                <Link
-                  href="/onboarding"
-                  className="rounded-full bg-[#d79c52] px-3 py-1 text-xs font-black text-[#172019]"
-                >
+                <Link href="/settings" className="rounded-full bg-[#d79c52] px-3 py-1 text-xs font-black text-[#172019]">
+                  Settings & photo
+                </Link>
+                <Link href="/onboarding" className="rounded-full bg-[#fffaf0]/10 px-3 py-1 text-xs font-black text-[#fffaf0]">
                   Edit preferences
                 </Link>
               </div>
@@ -198,6 +214,7 @@ export default function UsersPage() {
           </div>
         </div>
 
+        {/* Tabs */}
         <div className="flex gap-1 rounded-2xl border border-[#1b271f]/10 bg-[#fffaf0]/70 p-1 mb-6 overflow-x-auto">
           {(["suggested", "friends", "requests", "find"] as const).map((t) => (
             <button
@@ -207,10 +224,10 @@ export default function UsersPage() {
                 tab === t ? "bg-[#172019] text-[#fffaf0]" : "text-[#4b554c] hover:text-[#172019]"
               }`}
             >
-              {t === "suggested" && `✨ Suggested`}
+              {t === "suggested" && "✨ Suggested"}
               {t === "friends" && `Friends (${friends.length})`}
               {t === "requests" && `Requests${requests.length > 0 ? ` (${requests.length})` : ""}`}
-              {t === "find" && "Find by email"}
+              {t === "find" && "Find"}
             </button>
           ))}
         </div>
@@ -218,52 +235,38 @@ export default function UsersPage() {
         {tab === "suggested" && (
           <div className="space-y-3">
             <p className="text-sm font-semibold text-[#536055] mb-4">
-              People with similar preferences to yours, ranked by how well you match.
+              People with similar preferences, ranked by match.
             </p>
-            {loadingData ? (
+            {loading ? (
               <div className="text-center py-12 text-[#899083] font-semibold">Finding people...</div>
             ) : suggestions.length === 0 ? (
               <div className="rounded-[1.5rem] border border-[#1b271f]/10 bg-[#fffaf0]/70 p-8 text-center">
                 <p className="font-black text-[#172019] text-lg">No matches yet</p>
                 <p className="text-sm font-semibold text-[#667064] mt-2">
-                  Once more people complete their preferences, we&apos;ll suggest who you match with.
+                  Once more people complete onboarding, we&apos;ll suggest matches.
                 </p>
               </div>
             ) : (
               suggestions.map((s) => {
-                const color = COLORS[s.id.charCodeAt(0) % COLORS.length];
                 const matchPct = Math.round(s.match_score * 100);
                 const alreadySent = sent.has(s.email);
                 return (
-                  <div
-                    key={s.id}
-                    className="rounded-[1.5rem] border border-[#1b271f]/10 bg-[#fffaf0]/82 p-5 shadow-sm backdrop-blur"
-                  >
+                  <div key={s.id} className="rounded-[1.5rem] border border-[#1b271f]/10 bg-[#fffaf0]/82 p-5 shadow-sm backdrop-blur">
                     <div className="flex items-start gap-4">
-                      <div
-                        className="grid size-12 place-items-center rounded-full text-sm font-black text-[#fffaf0] flex-shrink-0"
-                        style={{ backgroundColor: color }}
-                      >
-                        {initials(s.name)}
-                      </div>
+                      <Avatar image={s.image} name={s.name} size={48} id={s.id} />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="font-black text-[#172019]">{s.name}</p>
+                          {s.username && <p className="text-xs font-bold text-[#667064]">@{s.username}</p>}
                           <span className="rounded-full bg-[#d79c52] px-2.5 py-0.5 text-xs font-black text-[#172019]">
                             {matchPct}% match
                           </span>
                         </div>
-                        <p className="text-xs text-[#667064] mt-0.5">{s.email}</p>
-                        {s.bio && (
-                          <p className="text-sm font-semibold text-[#536055] mt-2">{s.bio}</p>
-                        )}
+                        {s.bio && <p className="text-sm font-semibold text-[#536055] mt-2">{s.bio}</p>}
                         {s.intents && s.intents.length > 0 && (
                           <div className="mt-2 flex flex-wrap gap-1.5">
                             {s.intents.map((intent) => (
-                              <span
-                                key={intent}
-                                className="rounded-full bg-[#e8f0e7] px-2.5 py-0.5 text-xs font-black text-[#1f6b5d]"
-                              >
+                              <span key={intent} className="rounded-full bg-[#e8f0e7] px-2.5 py-0.5 text-xs font-black text-[#1f6b5d]">
                                 {INTENT_LABELS[intent] ?? intent}
                               </span>
                             ))}
@@ -274,12 +277,10 @@ export default function UsersPage() {
                         onClick={() => sendRequest(s.email)}
                         disabled={alreadySent || sending === s.email}
                         className={`rounded-2xl px-4 py-2 text-xs font-black transition flex-shrink-0 ${
-                          alreadySent
-                            ? "bg-[#e8f0e7] text-[#1f6b5d]"
-                            : "bg-[#172019] text-[#fffaf0] hover:bg-[#2b372e]"
+                          alreadySent ? "bg-[#e8f0e7] text-[#1f6b5d]" : "bg-[#172019] text-[#fffaf0] hover:bg-[#2b372e]"
                         } disabled:opacity-60`}
                       >
-                        {alreadySent ? "Sent ✓" : sending === s.email ? "..." : "Add friend"}
+                        {alreadySent ? "Sent ✓" : sending === s.email ? "..." : "Add"}
                       </button>
                     </div>
                   </div>
@@ -291,59 +292,41 @@ export default function UsersPage() {
 
         {tab === "friends" && (
           <div className="space-y-3">
-            {loadingData ? (
+            {loading ? (
               <div className="text-center py-12 text-[#899083] font-semibold">Loading...</div>
             ) : friends.length === 0 ? (
               <div className="rounded-[1.5rem] border border-[#1b271f]/10 bg-[#fffaf0]/70 p-8 text-center">
                 <p className="font-black text-[#172019] text-lg">No friends yet</p>
-                <p className="text-sm font-semibold text-[#667064] mt-2">
-                  Check the <strong>Suggested</strong> tab for people you match with.
-                </p>
+                <p className="text-sm font-semibold text-[#667064] mt-2">Check <strong>Suggested</strong>.</p>
               </div>
             ) : (
-              friends.map((f) => {
-                const color = COLORS[f.friendId.charCodeAt(0) % COLORS.length];
-                return (
-                  <div
-                    key={f.friendshipId}
-                    className="rounded-[1.5rem] border border-[#1b271f]/10 bg-[#fffaf0]/82 p-5 shadow-sm backdrop-blur"
-                  >
-                    <div className="flex items-start gap-4">
-                      <div
-                        className="grid size-12 place-items-center rounded-full text-sm font-black text-[#fffaf0] flex-shrink-0"
-                        style={{ backgroundColor: color }}
-                      >
-                        {initials(f.friendName)}
-                      </div>
-                      <div className="flex-1 min-w-0">
+              friends.map((f) => (
+                <div key={f.friendshipId} className="rounded-[1.5rem] border border-[#1b271f]/10 bg-[#fffaf0]/82 p-5 shadow-sm backdrop-blur">
+                  <div className="flex items-start gap-4">
+                    <Avatar image={f.friendImage} name={f.friendName} size={48} id={f.friendId} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-black text-[#172019]">{f.friendName}</p>
-                        <p className="text-xs text-[#667064] mt-0.5">{f.friendEmail}</p>
-                        {f.friendBio && (
-                          <p className="text-sm font-semibold text-[#536055] mt-2">{f.friendBio}</p>
-                        )}
-                        {f.friendIntents && f.friendIntents.length > 0 && (
-                          <div className="mt-2 flex flex-wrap gap-1.5">
-                            {f.friendIntents.map((intent) => (
-                              <span
-                                key={intent}
-                                className="rounded-full bg-[#e8f0e7] px-2.5 py-0.5 text-xs font-black text-[#1f6b5d]"
-                              >
-                                {INTENT_LABELS[intent] ?? intent}
-                              </span>
-                            ))}
-                          </div>
-                        )}
+                        {f.friendUsername && <p className="text-xs font-bold text-[#667064]">@{f.friendUsername}</p>}
                       </div>
-                      <button
-                        onClick={() => removeFriend(f.friendshipId)}
-                        className="text-xs font-black text-[#899083] hover:text-[#b6522b] transition flex-shrink-0"
-                      >
-                        Remove
-                      </button>
+                      <p className="text-xs text-[#667064] mt-0.5">{f.friendEmail}</p>
+                      {f.friendBio && <p className="text-sm font-semibold text-[#536055] mt-2">{f.friendBio}</p>}
+                      {f.friendIntents && f.friendIntents.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {f.friendIntents.map((intent) => (
+                            <span key={intent} className="rounded-full bg-[#e8f0e7] px-2.5 py-0.5 text-xs font-black text-[#1f6b5d]">
+                              {INTENT_LABELS[intent] ?? intent}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
+                    <button onClick={() => removeFriend(f.friendshipId)} className="text-xs font-black text-[#899083] hover:text-[#b6522b] transition flex-shrink-0">
+                      Remove
+                    </button>
                   </div>
-                );
-              })
+                </div>
+              ))
             )}
           </div>
         )}
@@ -352,45 +335,31 @@ export default function UsersPage() {
           <div className="space-y-3">
             {requests.length === 0 ? (
               <div className="rounded-[1.5rem] border border-[#1b271f]/10 bg-[#fffaf0]/70 p-8 text-center">
-                <p className="font-semibold text-[#667064]">No pending friend requests</p>
+                <p className="font-semibold text-[#667064]">No pending requests</p>
               </div>
             ) : (
-              requests.map((req) => {
-                const color = COLORS[req.requesterId.charCodeAt(0) % COLORS.length];
-                return (
-                  <div
-                    key={req.id}
-                    className="rounded-[1.5rem] border border-[#1b271f]/10 bg-[#fffaf0]/82 p-5 shadow-sm backdrop-blur"
-                  >
-                    <div className="flex items-center gap-4">
-                      <div
-                        className="grid size-12 place-items-center rounded-full text-sm font-black text-[#fffaf0] flex-shrink-0"
-                        style={{ backgroundColor: color }}
-                      >
-                        {initials(req.requesterName)}
-                      </div>
-                      <div className="flex-1">
+              requests.map((req) => (
+                <div key={req.id} className="rounded-[1.5rem] border border-[#1b271f]/10 bg-[#fffaf0]/82 p-5 shadow-sm backdrop-blur">
+                  <div className="flex items-center gap-4">
+                    <Avatar image={req.requesterImage} name={req.requesterName} size={48} id={req.requesterId} />
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-black text-[#172019]">{req.requesterName}</p>
-                        <p className="text-xs text-[#667064]">{req.requesterEmail}</p>
+                        {req.requesterUsername && <p className="text-xs font-bold text-[#667064]">@{req.requesterUsername}</p>}
                       </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => respondToRequest(req.id, "accepted")}
-                          className="rounded-2xl bg-[#1f6b5d] px-4 py-2 text-xs font-black text-[#fffaf0] hover:bg-[#255f55] transition"
-                        >
-                          Accept
-                        </button>
-                        <button
-                          onClick={() => respondToRequest(req.id, "declined")}
-                          className="rounded-2xl border border-[#1b271f]/10 px-4 py-2 text-xs font-black text-[#4b554c] hover:border-[#b6522b] hover:text-[#b6522b] transition"
-                        >
-                          Decline
-                        </button>
-                      </div>
+                      <p className="text-xs text-[#667064]">{req.requesterEmail}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => respondToRequest(req.id, "accepted")} className="rounded-2xl bg-[#1f6b5d] px-4 py-2 text-xs font-black text-[#fffaf0] hover:bg-[#255f55] transition">
+                        Accept
+                      </button>
+                      <button onClick={() => respondToRequest(req.id, "declined")} className="rounded-2xl border border-[#1b271f]/10 px-4 py-2 text-xs font-black text-[#4b554c] hover:border-[#b6522b] hover:text-[#b6522b] transition">
+                        Decline
+                      </button>
                     </div>
                   </div>
-                );
-              })
+                </div>
+              ))
             )}
           </div>
         )}
@@ -401,29 +370,23 @@ export default function UsersPage() {
               <input
                 value={searchEmail}
                 onChange={(e) => setSearchEmail(e.target.value)}
-                placeholder="Search by email address..."
+                placeholder="Search by email, username, or name..."
                 className="w-full rounded-[1.2rem] bg-transparent px-4 py-3 text-sm font-bold text-[#172019] outline-none placeholder:text-[#899083]"
               />
             </div>
             {searching && <p className="text-sm font-semibold text-[#899083] text-center py-4">Searching...</p>}
             <div className="space-y-3">
               {searchResults.map((result) => {
-                const color = COLORS[result.id.charCodeAt(0) % COLORS.length];
                 const alreadySent = sent.has(result.email);
                 const alreadyFriend = friends.some((f) => f.friendId === result.id);
                 return (
-                  <div
-                    key={result.id}
-                    className="rounded-[1.5rem] border border-[#1b271f]/10 bg-[#fffaf0]/82 p-4 shadow-sm backdrop-blur flex items-center gap-4"
-                  >
-                    <div
-                      className="grid size-11 place-items-center rounded-full text-sm font-black text-[#fffaf0] flex-shrink-0"
-                      style={{ backgroundColor: color }}
-                    >
-                      {initials(result.name)}
-                    </div>
+                  <div key={result.id} className="rounded-[1.5rem] border border-[#1b271f]/10 bg-[#fffaf0]/82 p-4 shadow-sm backdrop-blur flex items-center gap-4">
+                    <Avatar image={result.image} name={result.name} size={44} id={result.id} />
                     <div className="flex-1 min-w-0">
-                      <p className="font-black text-[#172019]">{result.name}</p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-black text-[#172019]">{result.name}</p>
+                        {result.username && <p className="text-xs font-bold text-[#667064]">@{result.username}</p>}
+                      </div>
                       <p className="text-xs text-[#667064]">{result.email}</p>
                     </div>
                     {alreadyFriend ? (
@@ -436,13 +399,13 @@ export default function UsersPage() {
                           alreadySent ? "bg-[#e8f0e7] text-[#1f6b5d]" : "bg-[#172019] text-[#fffaf0] hover:bg-[#2b372e]"
                         } disabled:opacity-60`}
                       >
-                        {alreadySent ? "Sent ✓" : sending === result.email ? "Sending..." : "Add friend"}
+                        {alreadySent ? "Sent ✓" : sending === result.email ? "..." : "Add"}
                       </button>
                     )}
                   </div>
                 );
               })}
-              {!searching && searchEmail.length >= 3 && searchResults.length === 0 && (
+              {!searching && searchEmail.length >= 2 && searchResults.length === 0 && (
                 <p className="text-sm font-semibold text-[#899083] text-center py-4">No users found</p>
               )}
             </div>

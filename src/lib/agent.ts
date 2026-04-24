@@ -22,30 +22,46 @@ type Place = {
 
 async function searchGrab(keyword: string, lat: number, lng: number, limit = 6): Promise<Place[]> {
   const apiKey = process.env.GRAB_MAPS_API_KEY;
-  if (!apiKey) return [];
+  if (!apiKey) {
+    console.warn("[agent] GRAB_MAPS_API_KEY missing");
+    return [];
+  }
 
   const q = new URLSearchParams({ keyword, country: "SGP", location: `${lat},${lng}`, limit: String(limit) });
-  const res = await fetch(`https://maps.grab.com/api/v1/maps/poi/v1/search?${q}`, {
-    headers: { Authorization: `Bearer ${apiKey}` },
-    cache: "no-store",
-  });
-  if (!res.ok) return [];
+  const url = `https://maps.grab.com/api/v1/maps/poi/v1/search?${q}`;
+  console.log(`[agent] Grab search: keyword="${keyword}" loc=${lat},${lng}`);
 
-  const data = (await res.json()) as { places?: Array<Record<string, unknown>> };
-  return (data.places ?? []).map((p) => {
-    const loc = p.location as { latitude?: number; longitude?: number } | undefined;
-    const admin = (p.administrative_areas ?? []) as { type: string; name: string }[];
-    return {
-      poi_id: String(p.poi_id),
-      name: String(p.name ?? ""),
-      address: String(p.formatted_address ?? ""),
-      category: String(p.category ?? p.business_type ?? ""),
-      lat: loc?.latitude ?? null,
-      lng: loc?.longitude ?? null,
-      neighborhood: admin.find((a) => a.type === "Neighborhood")?.name ?? null,
-      distance: typeof p.distance === "number" ? (p.distance as number) : null,
-    };
-  });
+  try {
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      console.warn(`[agent] Grab ${res.status}: ${text.slice(0, 200)}`);
+      return [];
+    }
+
+    const data = (await res.json()) as { places?: Array<Record<string, unknown>> };
+    console.log(`[agent] Grab "${keyword}" returned ${data.places?.length ?? 0} places`);
+    return (data.places ?? []).map((p) => {
+      const loc = p.location as { latitude?: number; longitude?: number } | undefined;
+      const admin = (p.administrative_areas ?? []) as { type: string; name: string }[];
+      return {
+        poi_id: String(p.poi_id),
+        name: String(p.name ?? ""),
+        address: String(p.formatted_address ?? ""),
+        category: String(p.category ?? p.business_type ?? ""),
+        lat: loc?.latitude ?? null,
+        lng: loc?.longitude ?? null,
+        neighborhood: admin.find((a) => a.type === "Neighborhood")?.name ?? null,
+        distance: typeof p.distance === "number" ? (p.distance as number) : null,
+      };
+    });
+  } catch (e) {
+    console.error(`[agent] Grab fetch failed for "${keyword}":`, e);
+    return [];
+  }
 }
 
 const RecommendationSchema = z.object({
@@ -141,7 +157,7 @@ Pick the top 3-5 that best match the user's preferences. For each, explain the f
 Return a matchScore from 0-100 for each — weight categorical fit heaviest, then distance/area fit.`;
 
   const { object } = await generateObject({
-    model: "deepseek/deepseek-v4-pro",
+    model: "moonshotai/kimi-k2.6",
     schema: RecommendationSchema,
     prompt,
   });

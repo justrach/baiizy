@@ -1,4 +1,6 @@
 const DEFAULT_LOCATION = "1.3521,103.8198"; // Singapore
+const MAX_ATTEMPTS = 3;
+const BASE_BACKOFF_MS = 200;
 
 type GrabPlace = {
   poi_id: string;
@@ -19,6 +21,24 @@ type AutocompleteResult = {
   longitude: number;
 };
 
+async function fetchGrab(url: string, apiKey: string) {
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      cache: "no-store",
+    });
+
+    if (res.ok) return res;
+    if (res.status < 500) return res; // 4xx = don't retry
+    if (attempt < MAX_ATTEMPTS) {
+      await new Promise((r) => setTimeout(r, BASE_BACKOFF_MS * 2 ** (attempt - 1)));
+    } else {
+      return res;
+    }
+  }
+  return null;
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const keyword = searchParams.get("q")?.trim() ?? "";
@@ -34,13 +54,14 @@ export async function GET(request: Request) {
     limit: searchParams.get("limit") ?? "6",
   });
 
-  const res = await fetch(`https://maps.grab.com/api/v1/maps/poi/v1/search?${q}`, {
-    headers: { Authorization: `Bearer ${apiKey}` },
-    cache: "no-store",
-  });
+  const url = `https://maps.grab.com/api/v1/maps/poi/v1/search?${q}`;
+  const res = await fetchGrab(url, apiKey);
 
-  if (!res.ok) {
-    return Response.json({ error: `Grab returned ${res.status}`, results: [] }, { status: 502 });
+  if (!res || !res.ok) {
+    return Response.json(
+      { error: `upstream ${res?.status ?? "unreachable"}`, results: [] },
+      { status: 502 },
+    );
   }
 
   const data = (await res.json()) as { places?: GrabPlace[] };

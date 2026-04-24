@@ -464,6 +464,15 @@ export default function MapsPage() {
                     <p className="mt-2 text-sm font-black leading-6 text-[#536055]">
                       {styleStatus?.message ?? "Fetching the raw GrabMaps style JSON."}
                     </p>
+                    {styleStatus !== null && !styleStatus.ok ? (
+                      <button
+                        type="button"
+                        onClick={() => window.location.reload()}
+                        className="mt-4 rounded-2xl bg-[#172019] px-5 py-2 text-xs font-black text-[#fffaf0] hover:bg-[#2b372e] transition"
+                      >
+                        Retry
+                      </button>
+                    ) : null}
                   </div>
                 </div>
               ) : null}

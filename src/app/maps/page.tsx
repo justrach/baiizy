@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { loadMapStyle, FALLBACK_BEARING, FALLBACK_PITCH } from "@/lib/fallback-style";
+import { loadMapStyle, FALLBACK_BEARING, FALLBACK_PITCH, resolveStyleUrls } from "@/lib/fallback-style";
 import maplibregl, {
   type Map as MapLibreMap,
   type Marker as MapLibreMarker,
@@ -89,9 +89,10 @@ async function searchPlaces(query: string) {
   return data;
 }
 
-async function fetchMapStyle() {
+async function fetchMapStyle(origin: string) {
   const res = await loadMapStyle();
-  return { style: res.style as unknown as RawMapStyle, fallback: res.fallback, reason: res.reason, isRaster: res.fallbackKind === "carto-raster" };
+  const style = res.fallback ? resolveStyleUrls(res.style, origin) : res.style;
+  return { style: style as unknown as RawMapStyle, fallback: res.fallback, reason: res.reason, isRaster: res.fallbackKind === "carto-raster" };
 }
 
 function describeStyle(style: RawMapStyle): StyleStatus {
@@ -170,7 +171,7 @@ export default function MapsPage() {
 
     const initMap = async () => {
       try {
-        const { style, fallback, reason, isRaster } = await fetchMapStyle();
+        const { style, fallback, reason, isRaster } = await fetchMapStyle(window.location.origin);
 
         if (cancelled || !mapContainerRef.current) {
           return;

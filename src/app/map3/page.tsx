@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import maplibregl, { type Map as MLMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { GRAB_SNAPSHOT_STYLE } from "@/lib/fallback-style";
+import { GRAB_SNAPSHOT_STYLE, resolveStyleUrls } from "@/lib/fallback-style";
 
 const SG_CENTER: [number, number] = [103.8198, 1.3521];
 
@@ -30,7 +30,7 @@ export default function Map3Page() {
 
       const map = new maplibregl.Map({
         container: containerRef.current,
-        style: GRAB_SNAPSHOT_STYLE,
+        style: resolveStyleUrls(GRAB_SNAPSHOT_STYLE, window.location.origin),
         center: SG_CENTER,
         zoom: 12.8,
         bearing: -8,

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 
 type NearbyFriend = {
   userId: string;
@@ -70,6 +71,27 @@ export default function PicksTab() {
   const [checkedIn, setCheckedIn] = useState<Set<string>>(new Set());
   const [nearby, setNearby] = useState<NearbyFriend[]>([]);
   const [dismissedNearby, setDismissedNearby] = useState<Set<string>>(new Set());
+  const [creatingEventFor, setCreatingEventFor] = useState<string | null>(null);
+  const router = useRouter();
+
+  const createQuickEvent = async (friendUserId: string) => {
+    setCreatingEventFor(friendUserId);
+    try {
+      const r = await fetch("/api/events/quick", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ friendUserId, startsInMin: 15 }),
+      });
+      const data = await r.json();
+      if (r.ok && data?.event?.id) {
+        router.push(`/events/${data.event.id}`);
+      } else {
+        alert(data?.error ?? "Couldn't create event");
+      }
+    } finally {
+      setCreatingEventFor(null);
+    }
+  };
 
   useEffect(() => {
     const run = async () => {
@@ -204,13 +226,22 @@ export default function PicksTab() {
                 </p>
                 {f.username && <p className="text-[0.62rem] font-bold text-[#667064]">@{f.username}</p>}
               </div>
-              <button
-                onClick={() => setDismissedNearby((prev) => new Set(prev).add(f.userId))}
-                className="rounded-full bg-[#fffaf0] border border-[#1b271f]/10 size-7 grid place-items-center text-[0.62rem] font-black text-[#4b554c] hover:bg-[#172019] hover:text-[#fffaf0] transition flex-shrink-0"
-                aria-label="Dismiss"
-              >
-                ✕
-              </button>
+              <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                <button
+                  onClick={() => createQuickEvent(f.userId)}
+                  disabled={creatingEventFor === f.userId}
+                  className="rounded-2xl bg-[#1f6b5d] px-3 py-1.5 text-xs font-black text-[#fffaf0] hover:bg-[#255f55] transition disabled:opacity-60 whitespace-nowrap"
+                >
+                  {creatingEventFor === f.userId ? "Creating…" : "⚡ Tap in"}
+                </button>
+                <button
+                  onClick={() => setDismissedNearby((prev) => new Set(prev).add(f.userId))}
+                  className="text-[0.62rem] font-black text-[#899083] hover:text-[#172019] transition"
+                  aria-label="Dismiss"
+                >
+                  dismiss
+                </button>
+              </div>
             </div>
           ))}
         </div>

@@ -73,6 +73,27 @@ export const CARTO_FALLBACK_STYLE: StyleSpecification = {
 export const FALLBACK_BEARING = 0;
 export const FALLBACK_PITCH = 0;
 
+/**
+ * Make all URLs in a style absolute given an origin. MapLibre v4+ requires
+ * sprite and glyphs URLs to be absolute. Call this client-side with
+ * window.location.origin before handing the style to MapLibre.
+ */
+export function resolveStyleUrls(style: StyleSpecification, origin: string): StyleSpecification {
+  const copy = JSON.parse(JSON.stringify(style)) as StyleSpecification & {
+    sources: Record<string, { tiles?: string[]; url?: string }>;
+    sprite?: string;
+    glyphs?: string;
+  };
+  const abs = (u?: string) => (u && u.startsWith("/") ? origin.replace(/\/$/, "") + u : u);
+  for (const src of Object.values(copy.sources ?? {})) {
+    if (Array.isArray(src.tiles)) src.tiles = src.tiles.map((t) => abs(t) as string);
+    if (typeof src.url === "string") src.url = abs(src.url) as string;
+  }
+  if (typeof copy.sprite === "string") copy.sprite = abs(copy.sprite) as string;
+  if (typeof copy.glyphs === "string") copy.glyphs = abs(copy.glyphs) as string;
+  return copy as StyleSpecification;
+}
+
 type LoadResult = {
   style: StyleSpecification;
   fallback: boolean;

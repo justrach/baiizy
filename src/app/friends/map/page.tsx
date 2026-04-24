@@ -5,7 +5,7 @@ import Link from "next/link";
 import maplibregl, { type Map as MLMap, type Marker as MLMarker } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useSession } from "@/lib/auth-client";
-import { loadMapStyle, FALLBACK_BEARING, FALLBACK_PITCH } from "@/lib/fallback-style";
+import { loadMapStyle, FALLBACK_BEARING, FALLBACK_PITCH, resolveStyleUrls } from "@/lib/fallback-style";
 
 type FriendLoc = {
   userId: string;
@@ -134,7 +134,8 @@ export default function FriendsMapPage() {
     let cancelled = false;
     const init = async () => {
       const loaded = await loadMapStyle();
-      const { style, fallback, reason } = loaded;
+      const { fallback, reason } = loaded;
+      const style = loaded.fallback ? resolveStyleUrls(loaded.style, window.location.origin) : loaded.style;
       const isRasterFallback = loaded.fallbackKind === "carto-raster";
       if (cancelled || !containerRef.current) return;
       if (fallback) { setUsingFallback(true); setFallbackReason(reason ?? ""); }

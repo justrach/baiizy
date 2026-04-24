@@ -3,6 +3,13 @@
 **Live → [https://www.baiizy.com](https://www.baiizy.com)**
 **Repo → [github.com/justrach/baiizy](https://github.com/justrach/baiizy)**
 **Judging pitch → [`hackathon/submission.md`](./hackathon/submission.md)**
+
+**🎯 Try it in 10 seconds — demo login:**
+- URL: [https://www.baiizy.com/login](https://www.baiizy.com/login)
+- Email: `grab@grab.com`
+- Password: `Grab123456`
+- Already has 6 demo friends scattered across Singapore, a profile photo, and a live Marina Bay location. Sign in and jump straight to `/users` → 🤖 Picks tab to try the AI recommender.
+- Production runs on a shared PlanetScale Postgres with a tight connection cap. If a burst of judges hits at once you might see a 500 — just retry, or sign up a fresh account which will seed its own friends via the 🪄 Demo button.
 **Grab API bug log → [`bugs/grab-api.md`](./bugs/grab-api.md)**
 
 A social concierge for the moment when you'd like to see a friend but don't know how to propose it without making it weird. You tell it what kind of hang you want — deep work, late supper, low-pressure date, friend walk — and it answers with three real places nearby, a grounded reason each one fits, a one-sentence opener you could paste into a text, and the distance from every friend who might come along.

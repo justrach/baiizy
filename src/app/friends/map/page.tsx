@@ -5,7 +5,7 @@ import Link from "next/link";
 import maplibregl, { type Map as MLMap, type Marker as MLMarker } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useSession } from "@/lib/auth-client";
-import { loadMapStyle } from "@/lib/fallback-style";
+import { loadMapStyle, FALLBACK_BEARING, FALLBACK_PITCH } from "@/lib/fallback-style";
 
 type FriendLoc = {
   userId: string;
@@ -133,8 +133,8 @@ export default function FriendsMapPage() {
           center: SG_CENTER,
           zoom: 11.6,
           attributionControl: false,
-          bearing: -10,
-          pitch: 36,
+          bearing: fallback ? FALLBACK_BEARING : -10,
+          pitch: fallback ? FALLBACK_PITCH : 36,
         });
         map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
         map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
@@ -142,7 +142,10 @@ export default function FriendsMapPage() {
 
         map.on("load", () => {
           if (!cancelled) setStyleReady(true);
+          // Resize a few times to handle banner appearing / layout reflow
           requestAnimationFrame(() => map.resize());
+          setTimeout(() => map.resize(), 120);
+          setTimeout(() => map.resize(), 450);
         });
       } catch (e) {
         if (!cancelled) setLoadError(e instanceof Error ? e.message : "Map failed to load");

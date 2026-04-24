@@ -1,21 +1,24 @@
 import type { StyleSpecification } from "maplibre-gl";
 
 /**
- * Warm OpenStreetMap fallback style that matches the Baiizy palette
- * (#eadfca beige background, desaturated + warm-shifted tiles).
- *
- * Used when the Grab style endpoint returns 5xx. Gives us a parchment-ish
- * map that still looks intentional instead of a dead page.
+ * Warm OpenStreetMap fallback style for when GrabMaps is down.
+ * Uses Carto Voyager tiles (prettier + faster CDN than raw OSM)
+ * with a light beige background matching the Baiizy palette.
  */
 export const FALLBACK_STYLE: StyleSpecification = {
   version: 8,
   sources: {
-    osm: {
+    carto: {
       type: "raster",
-      tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+      tiles: [
+        "https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
+        "https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
+        "https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
+        "https://d.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
+      ],
       tileSize: 256,
       maxzoom: 19,
-      attribution: "© OpenStreetMap contributors",
+      attribution: "© OpenStreetMap contributors · © CARTO",
     },
   },
   layers: [
@@ -25,44 +28,34 @@ export const FALLBACK_STYLE: StyleSpecification = {
       paint: { "background-color": "#eadfca" },
     },
     {
-      id: "osm-tiles",
+      id: "carto-tiles",
       type: "raster",
-      source: "osm",
+      source: "carto",
       paint: {
-        "raster-opacity": 0.82,
-        "raster-saturation": -0.45,
-        "raster-hue-rotate": 18,
-        "raster-brightness-max": 0.93,
-        "raster-brightness-min": 0.08,
-        "raster-contrast": 0.08,
+        "raster-opacity": 1,
+        "raster-saturation": -0.12,
+        "raster-hue-rotate": 8,
       },
     },
   ],
 };
 
-/**
- * Try to fetch Grab's style. If it fails (5xx, network error, or upstream
- * unavailable), return the fallback style and flag it. Used by both
- * /friends/map and /maps pages.
- */
+/** Flag exported so the map page can set flat pitch/bearing when using the fallback. */
+export const FALLBACK_BEARING = 0;
+export const FALLBACK_PITCH = 0;
+
 export async function loadMapStyle(): Promise<{ style: StyleSpecification; fallback: boolean; reason?: string }> {
   try {
     const res = await fetch("/api/grab/style?theme=basic", { cache: "no-store" });
     if (!res.ok) {
-      const msg = `Grab style returned ${res.status}`;
-      return { style: FALLBACK_STYLE, fallback: true, reason: msg };
+      return { style: FALLBACK_STYLE, fallback: true, reason: `Grab style returned ${res.status}` };
     }
     const data = await res.json();
-    // Our proxy emits {error, message} on exhausted retries — catch that too
     if (data && typeof data === "object" && "error" in data) {
       return { style: FALLBACK_STYLE, fallback: true, reason: (data as { message?: string }).message ?? "Grab unavailable" };
     }
     return { style: data as StyleSpecification, fallback: false };
   } catch (e) {
-    return {
-      style: FALLBACK_STYLE,
-      fallback: true,
-      reason: e instanceof Error ? e.message : "Network error",
-    };
+    return { style: FALLBACK_STYLE, fallback: true, reason: e instanceof Error ? e.message : "Network error" };
   }
 }

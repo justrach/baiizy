@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { loadMapStyle } from "@/lib/fallback-style";
+import { loadMapStyle, FALLBACK_BEARING, FALLBACK_PITCH } from "@/lib/fallback-style";
 import maplibregl, {
   type Map as MapLibreMap,
   type Marker as MapLibreMarker,
@@ -178,10 +178,10 @@ export default function MapsPage() {
 
         map = new maplibregl.Map({
           attributionControl: false,
-          bearing: -12,
+          bearing: fallback ? FALLBACK_BEARING : -12,
           center: [103.8602, 1.2834],
           container: mapContainerRef.current,
-          pitch: 42,
+          pitch: fallback ? FALLBACK_PITCH : 42,
           style,
           zoom: 12.4,
         });

@@ -154,7 +154,7 @@ For each: grounded whyItFits (1 sentence, reference their profile, no filler), c
   let object;
   try {
     const result = await generateObject({
-      model: "openai/gpt-4o-mini",
+      model: "openai/gpt-5.4-nano",
       schema: RecommendationSchema,
       prompt,
       abortSignal: controller.signal,

@@ -133,7 +133,9 @@ export default function FriendsMapPage() {
   useEffect(() => {
     let cancelled = false;
     const init = async () => {
-      const { style, fallback, reason } = await loadMapStyle();
+      const loaded = await loadMapStyle();
+      const { style, fallback, reason } = loaded;
+      const isRasterFallback = loaded.fallbackKind === "carto-raster";
       if (cancelled || !containerRef.current) return;
       if (fallback) { setUsingFallback(true); setFallbackReason(reason ?? ""); }
 
@@ -144,8 +146,8 @@ export default function FriendsMapPage() {
           center: SG_CENTER,
           zoom: 11.4,
           attributionControl: false,
-          bearing: fallback ? FALLBACK_BEARING : -10,
-          pitch: fallback ? FALLBACK_PITCH : 24,
+          bearing: isRasterFallback ? FALLBACK_BEARING : -10,
+          pitch: isRasterFallback ? FALLBACK_PITCH : 24,
         });
         map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
         map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");

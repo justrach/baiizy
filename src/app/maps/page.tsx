@@ -89,9 +89,9 @@ async function searchPlaces(query: string) {
   return data;
 }
 
-async function fetchMapStyle(): Promise<{ style: RawMapStyle; fallback: boolean; reason?: string }> {
-  const { style, fallback, reason } = await loadMapStyle();
-  return { style: style as unknown as RawMapStyle, fallback, reason };
+async function fetchMapStyle() {
+  const res = await loadMapStyle();
+  return { style: res.style as unknown as RawMapStyle, fallback: res.fallback, reason: res.reason, isRaster: res.fallbackKind === "carto-raster" };
 }
 
 function describeStyle(style: RawMapStyle): StyleStatus {
@@ -170,7 +170,7 @@ export default function MapsPage() {
 
     const initMap = async () => {
       try {
-        const { style, fallback, reason } = await fetchMapStyle();
+        const { style, fallback, reason, isRaster } = await fetchMapStyle();
 
         if (cancelled || !mapContainerRef.current) {
           return;
@@ -178,10 +178,10 @@ export default function MapsPage() {
 
         map = new maplibregl.Map({
           attributionControl: false,
-          bearing: fallback ? FALLBACK_BEARING : -12,
+          bearing: isRaster ? FALLBACK_BEARING : -12,
           center: [103.8602, 1.2834],
           container: mapContainerRef.current,
-          pitch: fallback ? FALLBACK_PITCH : 42,
+          pitch: isRaster ? FALLBACK_PITCH : 42,
           style,
           zoom: 12.4,
         });

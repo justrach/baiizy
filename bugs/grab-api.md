@@ -216,3 +216,32 @@ $ for i in 1 2 3; do curl -o /dev/null -s -w "%{http_code}\n" \
 3. Applied the same retry pattern to `src/app/api/grab/autocomplete/route.ts` (3 attempts) since it hits the same POI backend.
 
 **Still unresolved:** Grab doesn't publish which region / which internal service is failing. Our retry masks transient blips but doesn't help during extended outages. If we need graceful degradation for a full outage, consider shipping a cached fallback style (last-known-good style JSON persisted in Postgres / R2) that gets served when upstream 5xx's exceed N attempts.
+
+---
+
+## 15. Glyph (label font) endpoint independently 502s
+
+**Symptom:** Even when Grab's vector tiles + sprite render fine, the
+font glyph endpoint returns 502:
+
+```
+$ curl -sI .../api/grab/proxy/api/maps/tiles/v2/fonts/Roboto%20Regular/0-255.pbf
+HTTP/1.1 502 Bad Gateway
+```
+
+**What caused it:** Grab's font service is a separate internal
+microservice from their tile service. It fails independently of the
+tile pipeline, so labels sometimes don't render even when the map
+itself does.
+
+**Fix:**
+- Proxy now retries 3× with exponential backoff (150ms → 600ms) via
+  `src/app/api/grab/proxy/[...path]/route.ts`
+- When glyphs still 502 after retries, MapLibre silently drops text
+  labels but the geometry still renders — graceful degradation.
+
+**Future:** If labels really matter during an outage, swap the
+`glyphs` URL in `GRAB_SNAPSHOT_STYLE` to a public provider like
+`https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf`.
+That's a minor visual mismatch (different font rendering) but labels
+stay visible.

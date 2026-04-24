@@ -155,3 +155,62 @@ export const checkins = pgTable(
   },
   (t) => [index("checkins_user_idx").on(t.userId)],
 );
+
+
+export const events = pgTable(
+  "events",
+  {
+    id: serial("id").primaryKey(),
+    creatorId: text("creator_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    description: text("description"),
+    venuePoiId: text("venue_poi_id").notNull(),
+    venueName: text("venue_name").notNull(),
+    venueAddress: text("venue_address"),
+    venueCategory: text("venue_category"),
+    venueLat: doublePrecision("venue_lat"),
+    venueLng: doublePrecision("venue_lng"),
+    startsAt: timestamp("starts_at").notNull(),
+    coverImage: text("cover_image"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("events_creator_idx").on(t.creatorId),
+    index("events_starts_idx").on(t.startsAt),
+  ],
+);
+
+export const eventInvitees = pgTable(
+  "event_invitees",
+  {
+    id: serial("id").primaryKey(),
+    eventId: integer("event_id").notNull().references(() => events.id, { onDelete: "cascade" }),
+    userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+    status: text("status", { enum: ["invited", "going", "maybe", "declined"] }).notNull().default("invited"),
+    invitedAt: timestamp("invited_at").notNull().defaultNow(),
+    respondedAt: timestamp("responded_at"),
+  },
+  (t) => [
+    unique("unique_event_user").on(t.eventId, t.userId),
+    index("event_invitees_event_idx").on(t.eventId),
+    index("event_invitees_user_idx").on(t.userId),
+  ],
+);
+
+export const reviews = pgTable(
+  "reviews",
+  {
+    id: serial("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+    poiId: text("poi_id").notNull(),
+    venueName: text("venue_name").notNull(),
+    venueCategory: text("venue_category"),
+    rating: integer("rating").notNull(),
+    comment: text("comment"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    unique("unique_user_review").on(t.userId, t.poiId),
+    index("reviews_poi_idx").on(t.poiId),
+  ],
+);

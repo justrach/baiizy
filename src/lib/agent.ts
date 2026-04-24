@@ -76,30 +76,37 @@ export type AgentInput = {
   focusIntent?: string;
 };
 
+const INTENT_KEYWORDS_SIMPLE: Record<string, string[]> = {
+  work: ["cafe"],
+  lunch: ["lunch"],
+  supper: ["restaurant"],
+  date: ["wine bar"],
+  friend: ["bookstore"],
+};
+
 export async function recommendPlaces(input: AgentInput) {
   const intents = input.focusIntent
     ? [input.focusIntent]
     : input.intents.length > 0
-    ? input.intents
+    ? input.intents.slice(0, 3) // cap to 3 intents
     : ["friend"];
 
-  // Pull candidates from Grab for each intent in parallel
-  const candidateLists = await Promise.all(
-    intents.flatMap((intent) => {
-      const keywords = INTENT_KEYWORDS[intent] ?? [intent];
-      return keywords.map((kw) => searchGrab(kw, input.currentLat, input.currentLng, 4));
-    }),
-  );
-
-  // Deduplicate by poi_id
-  const seen = new Set<string>();
+  // Sequence (not parallel) to avoid Grab's rate-limit / 503s
   const candidates: Place[] = [];
-  for (const list of candidateLists) {
-    for (const p of list) {
-      if (!seen.has(p.poi_id)) {
-        seen.add(p.poi_id);
-        candidates.push(p);
+  const seen = new Set<string>();
+  for (const intent of intents) {
+    const keyword = (INTENT_KEYWORDS_SIMPLE[intent] ?? [intent])[0];
+    try {
+      const list = await searchGrab(keyword, input.currentLat, input.currentLng, 6);
+      for (const p of list) {
+        if (!seen.has(p.poi_id)) {
+          seen.add(p.poi_id);
+          // Tag which intent search surfaced this, so the LLM can cross-reference
+          candidates.push({ ...p, sourceIntent: intent } as Place & { sourceIntent: string });
+        }
       }
+    } catch (e) {
+      console.warn(`Grab search failed for "${keyword}":`, e);
     }
   }
 
@@ -109,7 +116,9 @@ export async function recommendPlaces(input: AgentInput) {
 
   const candidateText = candidates
     .slice(0, 20)
-    .map((c, i) => `${i + 1}. [${c.poi_id}] ${c.name} — ${c.category} — ${c.neighborhood ?? "unknown area"} — ${c.address}`)
+    .map((c: Place & { sourceIntent?: string }, i) =>
+      `${i + 1}. [${c.poi_id}] ${c.name} — ${c.category} — ${c.neighborhood ?? "unknown area"} — surfaced-for:${c.sourceIntent ?? "unknown"} — ${c.address}`,
+    )
     .join("\n");
 
   const prompt = `You are a social concierge helping a user find places worth hanging out at.

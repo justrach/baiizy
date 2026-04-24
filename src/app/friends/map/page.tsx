@@ -83,14 +83,7 @@ function buildMarkerEl(f: FriendLoc, isMe: boolean): HTMLElement {
   }
   ringEl.appendChild(inner);
 
-  const tail = document.createElement("div");
-  tail.style.cssText = `
-    position: absolute; bottom: -5px; left: 50%; transform: translateX(-50%);
-    width: 8px; height: 8px; border-radius: 2px;
-    background: ${ring}; transform: translateX(-50%) rotate(45deg);
-    box-shadow: 0 4px 10px rgba(23,32,25,0.25);
-  `;
-  ringEl.appendChild(tail);
+  // (pin tail removed — anchor:"center" places the avatar ring directly on the coord)
 
   wrap.appendChild(ringEl);
 
@@ -192,9 +185,9 @@ export default function FriendsMapPage() {
       const el = buildMarkerEl(f, f.userId === me);
       el.addEventListener("click", () => {
         setSelected(f);
-        map.flyTo({ center: [f.lng, f.lat], zoom: 14.2, duration: 800, essential: true });
+        map.flyTo({ center: [f.lng, f.lat], zoom: 16, duration: 800, essential: true, pitch: 24 });
       });
-      const marker = new maplibregl.Marker({ element: el, anchor: "bottom" })
+      const marker = new maplibregl.Marker({ element: el, anchor: "center" })
         .setLngLat([f.lng, f.lat])
         .addTo(map);
       markersRef.current.push(marker);
@@ -204,7 +197,7 @@ export default function FriendsMapPage() {
     if (friends.length === 1) {
       map.flyTo({ center: [friends[0].lng, friends[0].lat], zoom: 13, duration: 900 });
     } else {
-      map.fitBounds(bounds, { padding: 70, duration: 900, maxZoom: 12.5 });
+      map.fitBounds(bounds, { padding: 80, duration: 900, maxZoom: 13.5 });
     }
   }, [styleReady, friends, me]);
 
@@ -326,7 +319,8 @@ export default function FriendsMapPage() {
                     {selected.userId === me && <span className="rounded-full bg-[#d79c52] px-1.5 py-0.5 text-[0.58rem] font-black text-[#172019]">you</span>}
                   </div>
                   <p className="text-[0.68rem] font-bold text-[#667064] mt-0.5">
-                    📍 {selected.neighborhood ?? `${selected.lat.toFixed(3)}, ${selected.lng.toFixed(3)}`}
+                    📍 {selected.neighborhood ?? "unknown area"}
+                    <span className="text-[#899083] ml-1">({selected.lat.toFixed(4)}, {selected.lng.toFixed(4)})</span>
                   </p>
                   <p className="text-[0.6rem] font-black uppercase tracking-[0.14em] text-[#8a6d2f] mt-0.5">
                     {relTime(selected.updatedAt)}
@@ -400,7 +394,7 @@ export default function FriendsMapPage() {
                   key={f.userId}
                   onClick={() => {
                     setSelected(f);
-                    mapRef.current?.flyTo({ center: [f.lng, f.lat], zoom: 14.8, duration: 900 });
+                    mapRef.current?.flyTo({ center: [f.lng, f.lat], zoom: 16, duration: 900, pitch: 24 });
                   }}
                   className={`flex items-center gap-3 rounded-2xl border p-3 text-left transition ${
                     isSelected

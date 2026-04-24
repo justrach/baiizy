@@ -1,7 +1,8 @@
 import { headers } from "next/headers";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { db } from "@/db";
 import { userPreferences } from "@/db/schema";
+import { user } from "@/db/auth-schema";
 import { auth } from "@/lib/auth";
 import { recommendPlaces } from "@/lib/agent";
 
@@ -14,6 +15,8 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const focusIntent = searchParams.get("intent") ?? undefined;
   const customQuery = searchParams.get("q")?.trim() ?? undefined;
+  const friendIdsRaw = searchParams.get("friends") ?? "";
+  const friendIds = friendIdsRaw.split(",").map((s) => s.trim()).filter(Boolean);
 
   const [prefs] = await db
     .select()
@@ -51,6 +54,34 @@ export async function GET(request: Request) {
     );
   }
 
+  let friendLocations: Array<{ userId: string; name: string; image: string | null; lat: number; lng: number }> = [];
+  if (friendIds.length > 0) {
+    const rows = await db
+      .select({
+        userId: user.id,
+        name: user.name,
+        image: user.image,
+        lat: userPreferences.currentLat,
+        lng: userPreferences.currentLng,
+      })
+      .from(user)
+      .innerJoin(userPreferences, eq(userPreferences.userId, user.id))
+      .where(
+        and(
+          inArray(user.id, friendIds),
+          isNotNull(userPreferences.currentLat),
+          isNotNull(userPreferences.currentLng),
+        ),
+      );
+    friendLocations = rows.map((r) => ({
+      userId: r.userId,
+      name: r.name,
+      image: r.image,
+      lat: r.lat!,
+      lng: r.lng!,
+    }));
+  }
+
   try {
     const result = await recommendPlaces({
       intents: prefs.intents as string[],
@@ -62,11 +93,13 @@ export async function GET(request: Request) {
       currentLng: lng,
       focusIntent,
       customQuery,
+      friends: friendLocations,
     });
 
     return Response.json({
       ...result,
       usingLiveLocation: source === "live",
+      friendsIncluded: friendLocations.map((f) => ({ userId: f.userId, name: f.name, image: f.image })),
       location: {
         lat,
         lng,

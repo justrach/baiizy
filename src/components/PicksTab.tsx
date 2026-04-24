@@ -37,6 +37,8 @@ function fmtDist(km: number): string {
   return `${km.toFixed(1)}km`;
 }
 
+type FriendDistance = { userId: string; name: string; image: string | null; distanceKm: number };
+
 type Recommendation = {
   poi_id: string;
   name: string;
@@ -49,6 +51,9 @@ type Recommendation = {
   lat: number | null;
   lng: number | null;
   neighborhood: string | null;
+  myDistanceKm: number | null;
+  groupMaxKm: number | null;
+  friendDistances: FriendDistance[];
 };
 
 const INTENT_COLORS: Record<string, string> = {
@@ -176,13 +181,14 @@ export default function PicksTab() {
     );
   };
 
-  const fetchRecs = useCallback(async (intent?: string, searchQuery?: string) => {
+  const fetchRecs = useCallback(async (intent?: string, searchQuery?: string, friendIds?: string[]) => {
     setLoading(true);
     setError("");
     try {
       const params = new URLSearchParams();
       if (intent) params.set("intent", intent);
       if (searchQuery) params.set("q", searchQuery);
+      if (friendIds?.length) params.set("friends", friendIds.join(","));
       const url = params.toString() ? `/api/recommendations?${params}` : "/api/recommendations";
       const res = await fetch(url);
       const data = await res.json();
@@ -309,7 +315,7 @@ export default function PicksTab() {
                 return (
                   <button
                     key={a.slot}
-                    onClick={() => { setFocusIntent(a.suggestedIntent); fetchRecs(a.suggestedIntent, undefined); }}
+                    onClick={() => { setFocusIntent(a.suggestedIntent); fetchRecs(a.suggestedIntent, undefined, a.friends.map((f) => f.userId)); }}
                     className="w-full flex items-center gap-3 rounded-2xl border border-[#fffaf0]/10 bg-[#fffaf0]/5 p-3 hover:bg-[#fffaf0]/10 transition"
                   >
                     <div className="flex -space-x-2 flex-shrink-0">
@@ -443,6 +449,30 @@ export default function PicksTab() {
             </div>
 
             <p className="mt-3 text-sm font-semibold text-[#536055] leading-6">{r.whyItFits}</p>
+
+            {r.myDistanceKm != null && (
+              <div className="mt-3 flex items-center gap-2 flex-wrap">
+                <span className="text-[0.6rem] font-black uppercase tracking-[0.16em] text-[#8a6d2f]">Reach</span>
+                <span className="rounded-full bg-[#d79c52]/20 px-2 py-0.5 text-[0.68rem] font-black text-[#172019]">
+                  you {r.myDistanceKm.toFixed(1)}km
+                </span>
+                {r.friendDistances.map((fd) => (
+                  <span key={fd.userId} className="flex items-center gap-1 rounded-full bg-[#e8f0e7] px-1.5 py-0.5 text-[0.68rem] font-black text-[#1f6b5d]">
+                    {fd.image ? (
+                      <img src={fd.image} alt="" className="size-4 rounded-full object-cover" />
+                    ) : (
+                      <span className="size-4 rounded-full bg-[#1f6b5d] grid place-items-center text-[0.5rem] font-black text-[#fffaf0]">
+                        {fd.name[0]}
+                      </span>
+                    )}
+                    <span>{fd.name.split(" ")[0]} {fd.distanceKm.toFixed(1)}km</span>
+                  </span>
+                ))}
+                {r.groupMaxKm != null && r.friendDistances.length > 0 && (
+                  <span className="text-[0.6rem] font-bold text-[#667064]">· max {r.groupMaxKm.toFixed(1)}km</span>
+                )}
+              </div>
+            )}
 
             <div className="mt-3 rounded-[1.1rem] bg-[#e8f0e7] p-3">
               <p className="text-xs font-black uppercase tracking-[0.18em] text-[#1f6b5d]">Your move</p>

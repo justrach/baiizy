@@ -84,6 +84,7 @@ export type AgentInput = {
   currentLng: number;
   focusIntent?: string;
   customQuery?: string;   // freeform text overrides keyword-derived Grab search
+  friends?: Array<{ userId: string; name: string; image: string | null; lat: number; lng: number }>;
 };
 
 // Broader keyword map so recommendations aren't all bookstores etc.
@@ -127,8 +128,21 @@ export async function recommendPlaces(input: AgentInput) {
     ? input.intents.slice(0, 2)
     : ["friend"];
 
+  // Group-optimal anchor: centroid of me + friends (if any). Otherwise just me.
+  const anchor = input.friends?.length
+    ? {
+        lat: (input.currentLat + input.friends.reduce((sum, f) => sum + f.lat, 0)) / (1 + input.friends.length),
+        lng: (input.currentLng + input.friends.reduce((sum, f) => sum + f.lng, 0)) / (1 + input.friends.length),
+      }
+    : { lat: input.currentLat, lng: input.currentLng };
+
   // Fetch candidates
-  const rawCandidates: (Place & { sourceIntent?: string; distanceKm?: number })[] = [];
+  const rawCandidates: (Place & {
+    sourceIntent?: string;
+    distanceKm?: number;
+    myDistanceKm?: number;
+    friendDistances?: Array<{ userId: string; name: string; image: string | null; distanceKm: number }>;
+  })[] = [];
   const seen = new Set<string>();
 
   const keywordList: { keyword: string; tag: string }[] = input.customQuery
@@ -139,15 +153,32 @@ export async function recommendPlaces(input: AgentInput) {
 
   for (const { keyword, tag } of keywordList) {
     try {
-      const list = await searchGrab(keyword, input.currentLat, input.currentLng, GRAB_LIMIT_PER_KEYWORD);
+      const list = await searchGrab(keyword, anchor.lat, anchor.lng, GRAB_LIMIT_PER_KEYWORD);
       for (const p of list) {
         if (seen.has(p.poi_id)) continue;
         seen.add(p.poi_id);
-        const distanceKm =
-          p.lat !== null && p.lng !== null
-            ? haversineKm({ lat: input.currentLat, lng: input.currentLng }, { lat: p.lat as number, lng: p.lng as number })
-            : Infinity;
-        rawCandidates.push({ ...p, sourceIntent: tag, distanceKm });
+        const hasLatLng = p.lat != null && p.lng != null;
+        const myDistanceKm = hasLatLng
+          ? haversineKm({ lat: input.currentLat, lng: input.currentLng }, { lat: p.lat as number, lng: p.lng as number })
+          : Infinity;
+        const friendDistances = hasLatLng
+          ? (input.friends ?? []).map((f) => ({
+              userId: f.userId,
+              name: f.name,
+              image: f.image,
+              distanceKm: haversineKm({ lat: f.lat, lng: f.lng }, { lat: p.lat as number, lng: p.lng as number }),
+            }))
+          : [];
+        const groupMaxKm = friendDistances.length
+          ? Math.max(myDistanceKm, ...friendDistances.map((fd) => fd.distanceKm))
+          : myDistanceKm;
+        rawCandidates.push({
+          ...p,
+          sourceIntent: tag,
+          distanceKm: groupMaxKm,
+          myDistanceKm,
+          friendDistances,
+        });
       }
     } catch (e) {
       console.warn(`Grab search failed for "${keyword}":`, e);
@@ -246,6 +277,9 @@ For each pick:
       lat: match?.lat ?? null,
       lng: match?.lng ?? null,
       neighborhood: match?.neighborhood ?? null,
+      myDistanceKm: match?.myDistanceKm ?? null,
+      groupMaxKm: match?.distanceKm ?? null,
+      friendDistances: match?.friendDistances ?? [],
     };
   });
 

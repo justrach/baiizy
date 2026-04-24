@@ -99,25 +99,26 @@ const INTENT_KEYWORDS_SIMPLE: Record<string, string[]> = {
   date: ["wine bar"],
   friend: ["bookstore"],
 };
+const MAX_CANDIDATES_TO_LLM = 8;
+const GRAB_LIMIT_PER_INTENT = 4;
+const AGENT_TIMEOUT_MS = 20_000;
 
 export async function recommendPlaces(input: AgentInput) {
   const intents = input.focusIntent
     ? [input.focusIntent]
     : input.intents.length > 0
-    ? input.intents.slice(0, 3) // cap to 3 intents
+    ? input.intents.slice(0, 2) // 2 intents max, not 3 — fewer grab calls
     : ["friend"];
 
-  // Sequence (not parallel) to avoid Grab's rate-limit / 503s
   const candidates: Place[] = [];
   const seen = new Set<string>();
   for (const intent of intents) {
     const keyword = (INTENT_KEYWORDS_SIMPLE[intent] ?? [intent])[0];
     try {
-      const list = await searchGrab(keyword, input.currentLat, input.currentLng, 6);
+      const list = await searchGrab(keyword, input.currentLat, input.currentLng, GRAB_LIMIT_PER_INTENT);
       for (const p of list) {
         if (!seen.has(p.poi_id)) {
           seen.add(p.poi_id);
-          // Tag which intent search surfaced this, so the LLM can cross-reference
           candidates.push({ ...p, sourceIntent: intent } as Place & { sourceIntent: string });
         }
       }
@@ -130,53 +131,50 @@ export async function recommendPlaces(input: AgentInput) {
     return { recommendations: [], candidatesFound: 0 };
   }
 
+  // Terser candidate list — saves tokens → faster generation
   const candidateText = candidates
-    .slice(0, 20)
+    .slice(0, MAX_CANDIDATES_TO_LLM)
     .map((c: Place & { sourceIntent?: string }, i) =>
-      `${i + 1}. [${c.poi_id}] ${c.name} — ${c.category} — ${c.neighborhood ?? "unknown area"} — surfaced-for:${c.sourceIntent ?? "unknown"} — ${c.address}`,
+      `${i + 1}. [${c.poi_id}] ${c.name} (${c.category}) — ${c.neighborhood ?? ""} · for:${c.sourceIntent ?? ""}`,
     )
     .join("\n");
 
-  const prompt = `You are a social concierge helping a user find places worth hanging out at.
+  // Compact prompt — was ~1800 tokens, now ~400
+  const prompt = `Pick the top 3 places for this user from the candidates.
 
-The user wants to be matched with places that fit the SOCIAL and PRACTICAL shape of what they asked for, not just the literal keyword.
+USER: intents=${input.intents.join("+")} · mode=${input.socialMode} · avail=${input.availability.join(",") || "flex"} · looking_for=${intents.join("+")}${input.bio ? ` · bio="${input.bio}"` : ""}
 
-USER PROFILE:
-- Intents they care about: ${input.intents.join(", ") || "none"}
-- Social style: ${input.socialMode}
-- Availability: ${input.availability.join(", ") || "flexible"}
-- Neighborhood: ${input.neighborhood ?? "unspecified"}
-- Bio: ${input.bio ?? "none"}
-- Currently looking for: ${intents.join(", ")}
-
-CANDIDATE PLACES (from Grab, within ~1km of the user):
+CANDIDATES:
 ${candidateText}
 
-Pick the top 3-5 that best match the user's preferences. For each, explain the fit grounded in their actual profile (e.g. reference their social style, availability, or stated intents). Avoid generic filler. Include a suggestedMove that's low-pressure and concrete ("Do a 90-minute focus block here Tuesday morning").
-
-Return a matchScore from 0-100 for each — weight categorical fit heaviest, then distance/area fit.`;
+For each: grounded whyItFits (1 sentence, reference their profile, no filler), concrete suggestedMove (1 sentence action), matchScore 0-100.`;
 
   const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), 45000);
+  const t = setTimeout(() => controller.abort(), AGENT_TIMEOUT_MS);
   let object;
   try {
     const result = await generateObject({
-      model: "moonshotai/kimi-k2.6",
+      model: "openai/gpt-4o-mini",
       schema: RecommendationSchema,
       prompt,
       abortSignal: controller.signal,
+      providerOptions: {
+        // Fall back to fast reliable models if kimi-k2.6 fails / is slow / doesn't exist
+        gateway: {
+          models: ["openai/gpt-4o-mini", "anthropic/claude-haiku-4.5", "google/gemini-2.5-flash"],
+        },
+      },
     });
     object = result.object;
   } catch (err) {
     if (controller.signal.aborted) {
-      throw new Error("AI agent timed out after 45s — the model took too long. Try again.");
+      throw new Error("AI agent timed out after 20s — try again.");
     }
     throw err;
   } finally {
     clearTimeout(t);
   }
 
-  // Merge AI output back with candidate coordinates so the frontend can display them
   const enriched = object.recommendations.map((r) => {
     const match = candidates.find((c) => c.poi_id === r.poi_id);
     return {

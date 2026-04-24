@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { userPreferences } from "@/db/schema";
 import { auth } from "@/lib/auth";
 
-const PUBLIC_PATHS = ["/", "/maps", "/login", "/signup"];
+const PUBLIC_PATHS = ["/", "/maps", "/map3", "/login", "/signup"];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

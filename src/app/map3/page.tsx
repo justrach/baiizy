@@ -13,14 +13,21 @@ export default function Map3Page() {
   const mapRef = useRef<MLMap | null>(null);
   const [error, setError] = useState("");
   const [stats, setStats] = useState<{ layers: number; sources: number } | null>(null);
-  const [debug, setDebug] = useState<string>("");
+  const [debug, setDebug] = useState("");
 
   useEffect(() => {
     let cancelled = false;
     try {
       if (!containerRef.current) return;
-      const style = GRAB_SNAPSHOT_STYLE as { sources?: Record<string, { tiles?: string[] }>; sprite?: string };
-      setDebug(`tiles=${style.sources?.grabmaptiles?.tiles?.[0] ?? "?"} · sprite=${style.sprite ?? "?"}`);
+
+      const style = GRAB_SNAPSHOT_STYLE as unknown as {
+        sources?: Record<string, { tiles?: string[] }>;
+        sprite?: string;
+      };
+      setDebug(
+        `tiles=${style.sources?.grabmaptiles?.tiles?.[0] ?? "?"} · sprite=${style.sprite ?? "?"}`,
+      );
+
       const map = new maplibregl.Map({
         container: containerRef.current,
         style: GRAB_SNAPSHOT_STYLE,
@@ -42,17 +49,21 @@ export default function Map3Page() {
           sources: Object.keys(map.getStyle().sources ?? {}).length,
         });
         requestAnimationFrame(() => map.resize());
+        setTimeout(() => map.resize(), 200);
       });
+
       map.on("error", (e) => {
-        const err = e?.error?.message ?? String(e);
-        console.error("[map3 error]", err, e);
-        if (err && !err.includes("404") && !err.toLowerCase().includes("aborterror")) {
-          setError((prev) => prev || err);
+        const msg = (e as { error?: { message?: string } })?.error?.message ?? String(e);
+        console.error("[map3 error]", msg, e);
+        if (msg && !msg.includes("404") && !msg.toLowerCase().includes("aborterror")) {
+          setError((prev) => prev || msg);
         }
       });
-      map.on("styledata", () => console.log("[map3] styledata fired"));
-      map.on("sourcedata", (e) => { if (e.isSourceLoaded) console.log("[map3] source loaded:", e.sourceId); });
-      map.on("idle", () => console.log("[map3] idle — map finished rendering"));
+      map.on("styledata", () => console.log("[map3] styledata"));
+      map.on("sourcedata", (e) => {
+        if (e.isSourceLoaded) console.log("[map3] source loaded:", e.sourceId);
+      });
+      map.on("idle", () => console.log("[map3] idle"));
     } catch (e) {
       if (!cancelled) setError(e instanceof Error ? e.message : "Map init failed");
     }
@@ -80,7 +91,9 @@ export default function Map3Page() {
               Map3 · Grab style, copied 1:1
             </span>
           </div>
-          <Link href="/maps" className="text-xs font-black text-[#4b554c] hover:text-[#172019] transition">/maps →</Link>
+          <Link href="/maps" className="text-xs font-black text-[#4b554c] hover:text-[#172019] transition">
+            /maps →
+          </Link>
         </div>
       </header>
 
@@ -108,18 +121,16 @@ export default function Map3Page() {
           <div className="rounded-2xl bg-[#172019]/5 px-4 py-2 text-[0.62rem] font-mono font-bold text-[#536055] break-all">
             {debug}
           </div>
-        </div>
+        )}
+
+        {error && (
+          <div className="rounded-2xl bg-[#b6522b]/15 border border-[#b6522b]/30 p-4 text-sm font-black text-[#8a3f38]">
+            ⚠ {error}
+          </div>
+        )}
 
         <div className="relative rounded-[2rem] overflow-hidden border border-[#1b271f]/10 bg-[#eadfca] shadow-[0_22px_70px_rgba(23,32,25,0.18)]">
           <div ref={containerRef} className="h-[70vh] min-h-[520px] max-h-[820px] w-full" />
-          {error && (
-            <div className="absolute inset-0 z-20 grid place-items-center p-6 bg-[#eadfca]/80">
-              <div className="max-w-sm rounded-[1.6rem] bg-[#fffaf0] p-6 shadow-xl text-center">
-                <p className="text-xs font-black uppercase tracking-[0.2em] text-[#8a6d2f]">Map error</p>
-                <p className="mt-2 text-sm font-black leading-6 text-[#536055]">{error}</p>
-              </div>
-            </div>
-          )}
         </div>
 
         <div className="rounded-[1.5rem] border border-[#1b271f]/10 bg-[#fffaf0]/60 p-4 text-sm font-semibold text-[#536055] leading-6">

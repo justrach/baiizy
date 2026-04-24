@@ -234,7 +234,19 @@ export default function FriendsMapPage() {
             <span className="inline-block size-2 rounded-full bg-[#1f6b5d] animate-pulse" />
             <span className="text-xs font-black uppercase tracking-[0.22em] text-[#172019]">Live · Friends map</span>
           </div>
-          <div className="w-16" />
+          <button
+            onClick={async () => {
+              setSeeding(true);
+              const r = await fetch("/api/dev/seed-friends", { method: "POST" });
+              setSeeding(false);
+              if (r.ok) await loadFriends();
+            }}
+            disabled={seeding}
+            className="rounded-2xl bg-[#1f6b5d] px-3 py-2 text-xs font-black text-[#fffaf0] hover:bg-[#255f55] transition disabled:opacity-60"
+            title="Seed demo friends"
+          >
+            {seeding ? "..." : "🪄 Demo"}
+          </button>
         </div>
       </header>
 
@@ -294,15 +306,15 @@ export default function FriendsMapPage() {
           )}
 
           {/* Empty state overlay */}
-          {styleReady && friends.length === 0 && !loadError && (
+          {styleReady && otherFriends.length === 0 && !loadError && (
             <div className="absolute inset-0 z-10 grid place-items-center p-6 bg-[#eadfca]/60">
               <div className="max-w-sm rounded-[1.6rem] bg-[#fffaf0] p-6 shadow-[0_20px_60px_rgba(23,32,25,0.22)] text-center">
-                <p className="text-xs font-black uppercase tracking-[0.2em] text-[#8a6d2f]">No one on the map yet</p>
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-[#8a6d2f]">No friends on the map yet</p>
                 <h2 className="mt-2 font-serif text-xl font-black tracking-[-0.04em] text-[#172019]">
-                  Share your location to appear here
+                  It&apos;s lonely out here
                 </h2>
                 <p className="mt-2 text-sm font-semibold text-[#536055]">
-                  Or summon a few demo friends to see what this looks like populated.
+                  Summon 6 demo friends across Singapore — or add real ones from the <Link href="/users" className="underline font-black">friends page</Link>.
                 </p>
                 <button
                   onClick={async () => {

@@ -5,7 +5,7 @@ import Link from "next/link";
 import maplibregl, { type Map as MLMap, type Marker as MLMarker } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useSession } from "@/lib/auth-client";
-import { loadMapStyle, FALLBACK_BEARING, FALLBACK_PITCH, resolveStyleUrls } from "@/lib/fallback-style";
+import { loadMapStyle, resolveStyleUrls, FALLBACK_BEARING, FALLBACK_PITCH } from "@/lib/fallback-style";
 
 type FriendLoc = {
   userId: string;
@@ -43,9 +43,9 @@ function buildMarkerEl(f: FriendLoc, isMe: boolean): HTMLElement {
   wrap.className = "friend-marker";
   wrap.setAttribute("aria-label", f.name);
   wrap.style.cssText = `
-    width: 48px; height: 48px; position: relative; cursor: pointer;
+    width: 52px; height: 52px; position: relative; cursor: pointer;
     padding: 0; border: 0; background: transparent;
-    transform-origin: center bottom; transition: transform 180ms ease;
+    transform-origin: center; transition: transform 180ms ease;
   `;
 
   const pulse = document.createElement("div");
@@ -58,14 +58,14 @@ function buildMarkerEl(f: FriendLoc, isMe: boolean): HTMLElement {
 
   const ringEl = document.createElement("div");
   ringEl.style.cssText = `
-    position: relative; width: 48px; height: 48px; border-radius: 50%;
+    position: relative; width: 52px; height: 52px; border-radius: 50%;
     background: ${ring}; padding: 3px;
     box-shadow: 0 6px 18px rgba(23,32,25,0.32), 0 1px 3px rgba(0,0,0,0.15);
   `;
 
   const inner = document.createElement("div");
   inner.style.cssText = `
-    width: 42px; height: 42px; border-radius: 50%;
+    width: 46px; height: 46px; border-radius: 50%;
     display: grid; place-items: center; overflow: hidden;
     background: #fffaf0; color: #172019; font-weight: 900; font-size: 14px;
     border: 2px solid #fffaf0;
@@ -82,12 +82,9 @@ function buildMarkerEl(f: FriendLoc, isMe: boolean): HTMLElement {
     inner.style.color = "#fffaf0";
   }
   ringEl.appendChild(inner);
-
-  // (pin tail removed — anchor:"center" places the avatar ring directly on the coord)
-
   wrap.appendChild(ringEl);
 
-  wrap.addEventListener("mouseenter", () => { wrap.style.transform = "scale(1.08)"; });
+  wrap.addEventListener("mouseenter", () => { wrap.style.transform = "scale(1.1)"; });
   wrap.addEventListener("mouseleave", () => { wrap.style.transform = "scale(1)"; });
 
   return wrap;
@@ -128,8 +125,9 @@ export default function FriendsMapPage() {
     const init = async () => {
       const loaded = await loadMapStyle();
       const { fallback, reason } = loaded;
-      const style = loaded.fallback ? resolveStyleUrls(loaded.style, window.location.origin) : loaded.style;
-      const isRasterFallback = loaded.fallbackKind === "carto-raster";
+      // v4+ MapLibre needs absolute URLs for sprite + glyphs
+      const style = fallback ? resolveStyleUrls(loaded.style, window.location.origin) : loaded.style;
+      const isRaster = loaded.fallbackKind === "carto-raster";
       if (cancelled || !containerRef.current) return;
       if (fallback) { setUsingFallback(true); setFallbackReason(reason ?? ""); }
 
@@ -140,18 +138,31 @@ export default function FriendsMapPage() {
           center: SG_CENTER,
           zoom: 11.4,
           attributionControl: false,
-          bearing: isRasterFallback ? FALLBACK_BEARING : -10,
-          pitch: isRasterFallback ? FALLBACK_PITCH : 24,
+          bearing: isRaster ? FALLBACK_BEARING : -10,
+          pitch: isRaster ? FALLBACK_PITCH : 24,
+          keyboard: true, // arrow keys pan, +/- zoom, shift-arrow rotates
         });
         map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
         map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
         mapRef.current = map;
 
+        // Click anywhere on the map canvas to focus it so keyboard shortcuts work
+        map.getContainer().addEventListener("click", () => {
+          map.getCanvas().focus();
+        });
+
         map.on("load", () => {
           if (!cancelled) setStyleReady(true);
+          // Resize loop to catch layout reflow from the banner/toast appearing
           requestAnimationFrame(() => map.resize());
           setTimeout(() => map.resize(), 120);
           setTimeout(() => map.resize(), 450);
+        });
+        map.on("error", (e) => {
+          const msg = (e as { error?: { message?: string } })?.error?.message ?? "";
+          if (msg && !msg.includes("404") && !msg.toLowerCase().includes("aborterror")) {
+            console.warn("[friends-map]", msg);
+          }
         });
       } catch (e) {
         if (!cancelled) setLoadError(e instanceof Error ? e.message : "Map failed to load");
@@ -183,10 +194,12 @@ export default function FriendsMapPage() {
     const bounds = new maplibregl.LngLatBounds();
     for (const f of friends) {
       const el = buildMarkerEl(f, f.userId === me);
-      el.addEventListener("click", () => {
+      el.addEventListener("click", (evt) => {
+        evt.stopPropagation();
         setSelected(f);
         map.flyTo({ center: [f.lng, f.lat], zoom: 16, duration: 800, essential: true, pitch: 24 });
       });
+      // anchor:"center" — the avatar ring sits exactly on the coord (no floating offset)
       const marker = new maplibregl.Marker({ element: el, anchor: "center" })
         .setLngLat([f.lng, f.lat])
         .addTo(map);
@@ -195,7 +208,7 @@ export default function FriendsMapPage() {
     }
 
     if (friends.length === 1) {
-      map.flyTo({ center: [friends[0].lng, friends[0].lat], zoom: 13, duration: 900 });
+      map.flyTo({ center: [friends[0].lng, friends[0].lat], zoom: 14, duration: 900 });
     } else {
       map.fitBounds(bounds, { padding: 80, duration: 900, maxZoom: 13.5 });
     }
@@ -219,7 +232,9 @@ export default function FriendsMapPage() {
           75% { transform: scale(1.9); opacity: 0; }
           100% { transform: scale(1.9); opacity: 0; }
         }
-        .maplibregl-ctrl-attrib { background: rgba(255,250,240,0.8) !important; font-size: 10px !important; }
+        .maplibregl-ctrl-attrib { background: rgba(255,250,240,0.85) !important; font-size: 10px !important; }
+        /* Let the canvas take keyboard focus without the default outline stealing attention */
+        .maplibregl-canvas:focus { outline: 2px solid rgba(215,156,82,0.5); outline-offset: -2px; }
       `}</style>
 
       <header className="sticky top-0 z-20 border-b border-[#1b271f]/10 bg-[#fffaf0]/90 backdrop-blur-md px-5 py-4">
@@ -250,22 +265,18 @@ export default function FriendsMapPage() {
                 try {
                   const r = await fetch("/api/dev/seed-friends", { method: "POST" });
                   const data = await r.json().catch(() => ({}));
-                  if (!r.ok) {
-                    setToast(`Seed failed: ${data?.error ?? r.status}`);
-                  } else {
+                  if (!r.ok) setToast(`Seed failed: ${data?.error ?? r.status}`);
+                  else {
                     await loadFriends();
                     setToast(`✓ Linked ${data.linked?.length ?? 0} friends`);
                     setTimeout(() => setToast(""), 3500);
                   }
-                } catch (e) {
-                  setToast(`Seed failed: ${e instanceof Error ? e.message : "network"}`);
                 } finally {
                   setSeeding(false);
                 }
               }}
               disabled={seeding}
               className="rounded-2xl bg-[#1f6b5d] px-3 py-2 text-xs font-black text-[#fffaf0] hover:bg-[#255f55] transition disabled:opacity-60"
-              title="Seed demo friends"
             >
               {seeding ? "…" : "🪄 Demo"}
             </button>
@@ -274,18 +285,6 @@ export default function FriendsMapPage() {
       </header>
 
       <div className="mx-auto max-w-5xl px-4 sm:px-6 py-6 space-y-4">
-        {/* Fallback banner */}
-        {usingFallback && (
-          <div className="flex items-center justify-center gap-2 rounded-full bg-[#d79c52] px-4 py-2 shadow-[0_10px_30px_rgba(215,156,82,0.3)]">
-            <span className="size-2 rounded-full bg-[#172019] animate-pulse" />
-            <span className="text-xs font-black uppercase tracking-[0.18em] text-[#172019]">
-              Not GrabMaps · using OpenStreetMap fallback
-            </span>
-            {fallbackReason && <span className="text-[0.62rem] font-bold text-[#172019]/60 hidden sm:inline">({fallbackReason})</span>}
-          </div>
-        )}
-
-        {/* Toast / status message */}
         {toast && (
           <div className="flex items-center justify-center">
             <div className="rounded-full bg-[#172019] px-4 py-2 text-xs font-black text-[#fffaf0] shadow-[0_8px_24px_rgba(23,32,25,0.25)]">
@@ -294,11 +293,19 @@ export default function FriendsMapPage() {
           </div>
         )}
 
-        {/* Map card */}
+        {usingFallback && (
+          <div className="flex items-center justify-center gap-2 rounded-full bg-[#d79c52] px-4 py-2 shadow-[0_10px_30px_rgba(215,156,82,0.3)]">
+            <span className="size-2 rounded-full bg-[#172019] animate-pulse" />
+            <span className="text-xs font-black uppercase tracking-[0.18em] text-[#172019]">
+              Not GrabMaps · using snapshot
+            </span>
+            {fallbackReason && <span className="text-[0.62rem] font-bold text-[#172019]/60 hidden sm:inline">({fallbackReason})</span>}
+          </div>
+        )}
+
         <div className="relative rounded-[2rem] overflow-hidden border border-[#1b271f]/10 bg-[#eadfca] shadow-[0_22px_70px_rgba(23,32,25,0.18)]">
           <div ref={containerRef} className="h-[62vh] min-h-[440px] max-h-[720px] w-full" />
 
-          {/* Selected friend detail, overlaid bottom-left */}
           {selected && (
             <div className="absolute bottom-4 left-4 right-4 sm:right-auto sm:max-w-sm z-10 rounded-[1.4rem] border border-[#1b271f]/10 bg-[#fffaf0]/96 p-4 shadow-[0_20px_60px_rgba(23,32,25,0.25)] backdrop-blur-xl">
               <div className="flex items-start gap-3">
@@ -338,7 +345,6 @@ export default function FriendsMapPage() {
             </div>
           )}
 
-          {/* Empty state overlay */}
           {styleReady && otherFriends.length === 0 && !loadError && (
             <div className="absolute inset-0 z-10 grid place-items-center p-6 bg-[#eadfca]/60">
               <div className="max-w-sm rounded-[1.6rem] bg-[#fffaf0] p-6 shadow-[0_20px_60px_rgba(23,32,25,0.22)] text-center">
@@ -347,26 +353,24 @@ export default function FriendsMapPage() {
                   It&apos;s lonely out here
                 </h2>
                 <p className="mt-2 text-sm font-semibold text-[#536055]">
-                  Summon 6 demo friends across Singapore — or add real ones from the <Link href="/users" className="underline font-black">friends page</Link>.
+                  Summon 6 demo friends across Singapore, or add real ones on the <Link href="/users" className="underline font-black">friends page</Link>.
                 </p>
                 <button
                   onClick={async () => {
                     setSeeding(true);
                     const r = await fetch("/api/dev/seed-friends", { method: "POST" });
-                    const data = await r.json().catch(() => null);
                     setSeeding(false);
-                    if (r.ok) { await loadFriends(); } else alert(data?.error ?? "Seed failed");
+                    if (r.ok) await loadFriends();
                   }}
                   disabled={seeding}
                   className="mt-4 w-full rounded-2xl bg-[#1f6b5d] px-4 py-2.5 text-xs font-black text-[#fffaf0] hover:bg-[#255f55] transition disabled:opacity-60"
                 >
-                  {seeding ? "Summoning friends..." : "🪄 Seed 6 demo friends"}
+                  {seeding ? "Summoning friends…" : "🪄 Seed 6 demo friends"}
                 </button>
               </div>
             </div>
           )}
 
-          {/* Error overlay */}
           {loadError && (
             <div className="absolute inset-0 z-20 grid place-items-center p-6 bg-[#eadfca]/80">
               <div className="max-w-sm rounded-[1.6rem] bg-[#fffaf0] p-6 shadow-xl text-center">
@@ -383,48 +387,52 @@ export default function FriendsMapPage() {
           )}
         </div>
 
-        {/* Friend list below map */}
         {otherFriends.length > 0 && (
-          <div className="grid gap-2 sm:grid-cols-2">
-            {otherFriends.map((f) => {
-              const color = COLORS[f.userId.charCodeAt(0) % COLORS.length];
-              const isSelected = selected?.userId === f.userId;
-              return (
-                <button
-                  key={f.userId}
-                  onClick={() => {
-                    setSelected(f);
-                    mapRef.current?.flyTo({ center: [f.lng, f.lat], zoom: 16, duration: 900, pitch: 24 });
-                  }}
-                  className={`flex items-center gap-3 rounded-2xl border p-3 text-left transition ${
-                    isSelected
-                      ? "border-[#172019] bg-[#172019] text-[#fffaf0]"
-                      : "border-[#1b271f]/10 bg-[#fffaf0]/82 hover:border-[#172019] hover:shadow-md"
-                  }`}
-                >
-                  {f.image ? (
-                    <img src={f.image} alt="" className="size-10 rounded-full object-cover flex-shrink-0" />
-                  ) : (
-                    <span
-                      className="grid size-10 place-items-center rounded-full text-xs font-black text-[#fffaf0] flex-shrink-0"
-                      style={{ backgroundColor: color }}
-                    >
-                      {initialsOf(f.name)}
-                    </span>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className={`font-black text-sm ${isSelected ? "text-[#fffaf0]" : "text-[#172019]"}`}>{f.name}</p>
-                      {f.username && <p className={`text-[0.62rem] font-bold ${isSelected ? "text-[#d7c9a8]" : "text-[#667064]"}`}>@{f.username}</p>}
+          <>
+            <p className="text-[0.62rem] font-bold text-[#899083] text-center">
+              Click the map, then use arrow keys to pan · + / − to zoom · shift-arrows to rotate
+            </p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {otherFriends.map((f) => {
+                const color = COLORS[f.userId.charCodeAt(0) % COLORS.length];
+                const isSelected = selected?.userId === f.userId;
+                return (
+                  <button
+                    key={f.userId}
+                    onClick={() => {
+                      setSelected(f);
+                      mapRef.current?.flyTo({ center: [f.lng, f.lat], zoom: 16, duration: 900, pitch: 24 });
+                    }}
+                    className={`flex items-center gap-3 rounded-2xl border p-3 text-left transition ${
+                      isSelected
+                        ? "border-[#172019] bg-[#172019] text-[#fffaf0]"
+                        : "border-[#1b271f]/10 bg-[#fffaf0]/82 hover:border-[#172019] hover:shadow-md"
+                    }`}
+                  >
+                    {f.image ? (
+                      <img src={f.image} alt="" className="size-10 rounded-full object-cover flex-shrink-0" />
+                    ) : (
+                      <span
+                        className="grid size-10 place-items-center rounded-full text-xs font-black text-[#fffaf0] flex-shrink-0"
+                        style={{ backgroundColor: color }}
+                      >
+                        {initialsOf(f.name)}
+                      </span>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className={`font-black text-sm ${isSelected ? "text-[#fffaf0]" : "text-[#172019]"}`}>{f.name}</p>
+                        {f.username && <p className={`text-[0.62rem] font-bold ${isSelected ? "text-[#d7c9a8]" : "text-[#667064]"}`}>@{f.username}</p>}
+                      </div>
+                      <p className={`text-[0.62rem] font-bold ${isSelected ? "text-[#d7c9a8]" : "text-[#667064]"} mt-0.5 truncate`}>
+                        📍 {f.neighborhood ?? `${f.lat.toFixed(3)}, ${f.lng.toFixed(3)}`} · {relTime(f.updatedAt)}
+                      </p>
                     </div>
-                    <p className={`text-[0.62rem] font-bold ${isSelected ? "text-[#d7c9a8]" : "text-[#667064]"} mt-0.5 truncate`}>
-                      📍 {f.neighborhood ?? `${f.lat.toFixed(3)}, ${f.lng.toFixed(3)}`} · {relTime(f.updatedAt)}
-                    </p>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+                  </button>
+                );
+              })}
+            </div>
+          </>
         )}
       </div>
     </div>

@@ -13,11 +13,14 @@ export default function Map3Page() {
   const mapRef = useRef<MLMap | null>(null);
   const [error, setError] = useState("");
   const [stats, setStats] = useState<{ layers: number; sources: number } | null>(null);
+  const [debug, setDebug] = useState<string>("");
 
   useEffect(() => {
     let cancelled = false;
     try {
       if (!containerRef.current) return;
+      const style = GRAB_SNAPSHOT_STYLE as { sources?: Record<string, { tiles?: string[] }>; sprite?: string };
+      setDebug(`tiles=${style.sources?.grabmaptiles?.tiles?.[0] ?? "?"} · sprite=${style.sprite ?? "?"}`);
       const map = new maplibregl.Map({
         container: containerRef.current,
         style: GRAB_SNAPSHOT_STYLE,
@@ -41,10 +44,15 @@ export default function Map3Page() {
         requestAnimationFrame(() => map.resize());
       });
       map.on("error", (e) => {
-        // Style errors are surfaced here — ignore individual tile 404s
-        const err = e?.error?.message ?? "";
-        if (err && !err.includes("404")) console.warn("[map3]", err);
+        const err = e?.error?.message ?? String(e);
+        console.error("[map3 error]", err, e);
+        if (err && !err.includes("404") && !err.toLowerCase().includes("aborterror")) {
+          setError((prev) => prev || err);
+        }
       });
+      map.on("styledata", () => console.log("[map3] styledata fired"));
+      map.on("sourcedata", (e) => { if (e.isSourceLoaded) console.log("[map3] source loaded:", e.sourceId); });
+      map.on("idle", () => console.log("[map3] idle — map finished rendering"));
     } catch (e) {
       if (!cancelled) setError(e instanceof Error ? e.message : "Map init failed");
     }
@@ -94,6 +102,12 @@ export default function Map3Page() {
               </span>
             </div>
           )}
+        </div>
+
+        {debug && (
+          <div className="rounded-2xl bg-[#172019]/5 px-4 py-2 text-[0.62rem] font-mono font-bold text-[#536055] break-all">
+            {debug}
+          </div>
         </div>
 
         <div className="relative rounded-[2rem] overflow-hidden border border-[#1b271f]/10 bg-[#eadfca] shadow-[0_22px_70px_rgba(23,32,25,0.18)]">

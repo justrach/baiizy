@@ -103,6 +103,7 @@ export default function UsersPage() {
             <span className="text-sm font-black uppercase tracking-[0.24em] text-[#172019]">Baiizy</span>
           </Link>
           <div className="flex items-center gap-2">
+            <Link href="/friends/map" className="rounded-2xl bg-[#1f6b5d] px-4 py-2 text-xs font-black text-[#fffaf0] hover:bg-[#255f55] transition">🌍 Live map</Link>
             <Link href="/events" className="rounded-2xl border border-[#1b271f]/10 px-4 py-2 text-xs font-black text-[#4b554c] hover:border-[#172019] hover:text-[#172019] transition">Events</Link>
             <Link href="/settings" className="rounded-2xl border border-[#1b271f]/10 px-4 py-2 text-xs font-black text-[#4b554c] hover:border-[#172019] hover:text-[#172019] transition">Settings</Link>
             <Link href="/settings"><Avatar image={profile.image} name={profile.name} size={36} id={profile.id} /></Link>

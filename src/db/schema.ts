@@ -26,6 +26,9 @@ export const userPreferences = pgTable("user_preferences", {
   neighborhoodLng: doublePrecision("neighborhood_lng"),
   neighborhoodPoiId: text("neighborhood_poi_id"),
   bio: text("bio"),
+  currentLat: doublePrecision("current_lat"),
+  currentLng: doublePrecision("current_lng"),
+  currentLocationUpdatedAt: timestamp("current_location_updated_at"),
   onboardingCompleted: boolean("onboarding_completed").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -114,3 +117,41 @@ export const socialTables = pgTable("social_tables", {
   ask: text("ask").notNull(),
   cadence: text("cadence").notNull(),
 });
+
+
+export const favoritePlaces = pgTable(
+  "favorite_places",
+  {
+    id: serial("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+    poiId: text("poi_id").notNull(),
+    name: text("name").notNull(),
+    category: text("category"),
+    address: text("address"),
+    lat: doublePrecision("lat"),
+    lng: doublePrecision("lng"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    unique("unique_user_favorite").on(t.userId, t.poiId),
+    index("favorite_places_user_idx").on(t.userId),
+  ],
+);
+
+export const checkins = pgTable(
+  "checkins",
+  {
+    id: serial("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+    poiId: text("poi_id").notNull(),
+    name: text("name").notNull(),
+    category: text("category"),
+    address: text("address"),
+    lat: doublePrecision("lat"),
+    lng: doublePrecision("lng"),
+    note: text("note"),
+    rating: integer("rating"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("checkins_user_idx").on(t.userId)],
+);

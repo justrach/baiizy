@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useSession } from "@/lib/auth-client";
+import PicksTab from "@/components/PicksTab";
 
 type Profile = {
   id: string;
@@ -101,7 +102,7 @@ export default function UsersPage() {
   const [searching, setSearching] = useState(false);
   const [sending, setSending] = useState<string | null>(null);
   const [sent, setSent] = useState<Set<string>>(new Set());
-  const [tab, setTab] = useState<"suggested" | "friends" | "requests" | "find">("suggested");
+  const [tab, setTab] = useState<"picks" | "suggested" | "friends" | "requests" | "find">("picks");
   const [loading, setLoading] = useState(true);
 
   const loadAll = useCallback(async () => {
@@ -119,9 +120,7 @@ export default function UsersPage() {
     setLoading(false);
   }, []);
 
-  useEffect(() => {
-    if (user) loadAll();
-  }, [user, loadAll]);
+  useEffect(() => { if (user) loadAll(); }, [user, loadAll]);
 
   useEffect(() => {
     const t = setTimeout(async () => {
@@ -180,10 +179,7 @@ export default function UsersPage() {
             <span className="text-sm font-black uppercase tracking-[0.24em] text-[#172019]">Baiizy</span>
           </Link>
           <div className="flex items-center gap-3">
-            <Link
-              href="/settings"
-              className="rounded-2xl border border-[#1b271f]/10 px-4 py-2 text-xs font-black text-[#4b554c] hover:border-[#172019] hover:text-[#172019] transition"
-            >
+            <Link href="/settings" className="rounded-2xl border border-[#1b271f]/10 px-4 py-2 text-xs font-black text-[#4b554c] hover:border-[#172019] hover:text-[#172019] transition">
               Settings
             </Link>
             <Link href="/settings">
@@ -194,7 +190,6 @@ export default function UsersPage() {
       </header>
 
       <div className="mx-auto max-w-3xl px-5 py-8">
-        {/* Profile card */}
         <div className="rounded-[2rem] bg-[#172019] p-6 text-[#fffaf0] mb-6">
           <div className="flex items-start gap-4">
             <Avatar image={profile.image} name={profile.name} size={64} id={profile.id} />
@@ -203,20 +198,15 @@ export default function UsersPage() {
               {profile.username && <p className="text-sm text-[#d7c9a8]">@{profile.username}</p>}
               <p className="text-xs text-[#d7c9a8]/70 mt-1">{profile.email}</p>
               <div className="mt-3 flex flex-wrap gap-2">
-                <Link href="/settings" className="rounded-full bg-[#d79c52] px-3 py-1 text-xs font-black text-[#172019]">
-                  Settings & photo
-                </Link>
-                <Link href="/onboarding" className="rounded-full bg-[#fffaf0]/10 px-3 py-1 text-xs font-black text-[#fffaf0]">
-                  Edit preferences
-                </Link>
+                <Link href="/settings" className="rounded-full bg-[#d79c52] px-3 py-1 text-xs font-black text-[#172019]">Settings & photo</Link>
+                <Link href="/onboarding" className="rounded-full bg-[#fffaf0]/10 px-3 py-1 text-xs font-black text-[#fffaf0]">Edit preferences</Link>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Tabs */}
         <div className="flex gap-1 rounded-2xl border border-[#1b271f]/10 bg-[#fffaf0]/70 p-1 mb-6 overflow-x-auto">
-          {(["suggested", "friends", "requests", "find"] as const).map((t) => (
+          {(["picks", "suggested", "friends", "requests", "find"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -224,6 +214,7 @@ export default function UsersPage() {
                 tab === t ? "bg-[#172019] text-[#fffaf0]" : "text-[#4b554c] hover:text-[#172019]"
               }`}
             >
+              {t === "picks" && "🤖 Picks"}
               {t === "suggested" && "✨ Suggested"}
               {t === "friends" && `Friends (${friends.length})`}
               {t === "requests" && `Requests${requests.length > 0 ? ` (${requests.length})` : ""}`}
@@ -232,19 +223,17 @@ export default function UsersPage() {
           ))}
         </div>
 
+        {tab === "picks" && <PicksTab />}
+
         {tab === "suggested" && (
           <div className="space-y-3">
-            <p className="text-sm font-semibold text-[#536055] mb-4">
-              People with similar preferences, ranked by match.
-            </p>
+            <p className="text-sm font-semibold text-[#536055] mb-4">People with similar preferences, ranked by match.</p>
             {loading ? (
               <div className="text-center py-12 text-[#899083] font-semibold">Finding people...</div>
             ) : suggestions.length === 0 ? (
               <div className="rounded-[1.5rem] border border-[#1b271f]/10 bg-[#fffaf0]/70 p-8 text-center">
                 <p className="font-black text-[#172019] text-lg">No matches yet</p>
-                <p className="text-sm font-semibold text-[#667064] mt-2">
-                  Once more people complete onboarding, we&apos;ll suggest matches.
-                </p>
+                <p className="text-sm font-semibold text-[#667064] mt-2">Once more people complete onboarding, we&apos;ll suggest matches.</p>
               </div>
             ) : (
               suggestions.map((s) => {
@@ -258,9 +247,7 @@ export default function UsersPage() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="font-black text-[#172019]">{s.name}</p>
                           {s.username && <p className="text-xs font-bold text-[#667064]">@{s.username}</p>}
-                          <span className="rounded-full bg-[#d79c52] px-2.5 py-0.5 text-xs font-black text-[#172019]">
-                            {matchPct}% match
-                          </span>
+                          <span className="rounded-full bg-[#d79c52] px-2.5 py-0.5 text-xs font-black text-[#172019]">{matchPct}% match</span>
                         </div>
                         {s.bio && <p className="text-sm font-semibold text-[#536055] mt-2">{s.bio}</p>}
                         {s.intents && s.intents.length > 0 && (
@@ -350,12 +337,8 @@ export default function UsersPage() {
                       <p className="text-xs text-[#667064]">{req.requesterEmail}</p>
                     </div>
                     <div className="flex gap-2">
-                      <button onClick={() => respondToRequest(req.id, "accepted")} className="rounded-2xl bg-[#1f6b5d] px-4 py-2 text-xs font-black text-[#fffaf0] hover:bg-[#255f55] transition">
-                        Accept
-                      </button>
-                      <button onClick={() => respondToRequest(req.id, "declined")} className="rounded-2xl border border-[#1b271f]/10 px-4 py-2 text-xs font-black text-[#4b554c] hover:border-[#b6522b] hover:text-[#b6522b] transition">
-                        Decline
-                      </button>
+                      <button onClick={() => respondToRequest(req.id, "accepted")} className="rounded-2xl bg-[#1f6b5d] px-4 py-2 text-xs font-black text-[#fffaf0] hover:bg-[#255f55] transition">Accept</button>
+                      <button onClick={() => respondToRequest(req.id, "declined")} className="rounded-2xl border border-[#1b271f]/10 px-4 py-2 text-xs font-black text-[#4b554c] hover:border-[#b6522b] hover:text-[#b6522b] transition">Decline</button>
                     </div>
                   </div>
                 </div>

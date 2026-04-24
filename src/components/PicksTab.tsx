@@ -1,6 +1,31 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
+
+type NearbyFriend = {
+  userId: string;
+  name: string;
+  username: string | null;
+  image: string | null;
+  lat: number;
+  lng: number;
+  distanceKm: number;
+};
+
+function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const R = 6371;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+  const lat1 = (a.lat * Math.PI) / 180;
+  const lat2 = (b.lat * Math.PI) / 180;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+function fmtDist(km: number): string {
+  if (km < 1) return `${Math.round(km * 1000)}m`;
+  return `${km.toFixed(1)}km`;
+}
 
 type Recommendation = {
   poi_id: string;
@@ -43,6 +68,41 @@ export default function PicksTab() {
   const [locationMsg, setLocationMsg] = useState("");
   const [checkingIn, setCheckingIn] = useState<string | null>(null);
   const [checkedIn, setCheckedIn] = useState<Set<string>>(new Set());
+  const [nearby, setNearby] = useState<NearbyFriend[]>([]);
+  const [dismissedNearby, setDismissedNearby] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const run = async () => {
+      try {
+        const r = await fetch("/api/friends/locations");
+        const text = await r.text();
+        if (!text) return;
+        const data = JSON.parse(text);
+        const me = (data.friends ?? []).find((f: { userId: string; lat: number; lng: number }) => f.userId === data.me);
+        if (!me) return;
+        const others = (data.friends ?? [])
+          .filter((f: { userId: string }) => f.userId !== data.me)
+          .map((f: { userId: string; name: string; username: string | null; image: string | null; lat: number; lng: number }) => ({
+            userId: f.userId,
+            name: f.name,
+            username: f.username,
+            image: f.image,
+            lat: f.lat,
+            lng: f.lng,
+            distanceKm: haversineKm({ lat: me.lat, lng: me.lng }, { lat: f.lat, lng: f.lng }),
+          }))
+          .filter((f: NearbyFriend) => f.distanceKm <= 1)
+          .sort((a: NearbyFriend, b: NearbyFriend) => a.distanceKm - b.distanceKm);
+        setNearby(others);
+      } catch {
+        /* silent */
+      }
+    };
+    run();
+    // Re-check every 30s so mocked notifications feel alive
+    const id = setInterval(run, 30_000);
+    return () => clearInterval(id);
+  }, [location]);
 
   const shareLocation = () => {
     setSharingLocation(true);
@@ -115,8 +175,47 @@ export default function PicksTab() {
 
   const intents: (string | null)[] = [null, "work", "lunch", "supper", "date", "friend"];
 
+  const visibleNearby = nearby.filter((f) => !dismissedNearby.has(f.userId));
+
   return (
     <div className="space-y-4">
+      {/* 🔔 Nearby friends notification (mocked) */}
+      {visibleNearby.length > 0 && (
+        <div className="space-y-2">
+          {visibleNearby.slice(0, 3).map((f) => (
+            <div
+              key={f.userId}
+              className="flex items-center gap-3 rounded-[1.4rem] border border-[#d79c52]/50 bg-gradient-to-r from-[#fff6df] to-[#eadfca]/60 p-3 shadow-[0_10px_30px_rgba(215,156,82,0.2)]"
+            >
+              <div className="relative flex-shrink-0">
+                {f.image ? (
+                  <img src={f.image} alt="" className="size-11 rounded-full object-cover border-2 border-[#d79c52]" />
+                ) : (
+                  <div className="size-11 rounded-full bg-[#1f6b5d] grid place-items-center text-xs font-black text-[#fffaf0] border-2 border-[#d79c52]">
+                    {f.name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2)}
+                  </div>
+                )}
+                <span className="absolute -top-0.5 -right-0.5 size-3 rounded-full bg-[#1f6b5d] border-2 border-[#fffaf0] animate-pulse" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-[#b6522b]">🔔 Nearby now</p>
+                <p className="text-sm font-black text-[#172019] mt-0.5 truncate">
+                  {f.name} is <span className="text-[#1f6b5d]">{fmtDist(f.distanceKm)}</span> away
+                </p>
+                {f.username && <p className="text-[0.62rem] font-bold text-[#667064]">@{f.username}</p>}
+              </div>
+              <button
+                onClick={() => setDismissedNearby((prev) => new Set(prev).add(f.userId))}
+                className="rounded-full bg-[#fffaf0] border border-[#1b271f]/10 size-7 grid place-items-center text-[0.62rem] font-black text-[#4b554c] hover:bg-[#172019] hover:text-[#fffaf0] transition flex-shrink-0"
+                aria-label="Dismiss"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Location + intent controls */}
       <div className="rounded-[1.5rem] border border-[#1b271f]/10 bg-[#fffaf0]/82 p-4 shadow-sm backdrop-blur">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
@@ -169,7 +268,13 @@ export default function PicksTab() {
 
       {loading && (
         <div className="rounded-[1.5rem] border border-[#1b271f]/10 bg-[#fffaf0]/70 p-8 text-center">
-          <p className="font-semibold text-[#667064]">Asking the AI agent to find spots near you...</p>
+          <div className="flex items-center justify-center gap-2">
+            <span className="size-2 rounded-full bg-[#1f6b5d] animate-pulse" />
+            <span className="size-2 rounded-full bg-[#1f6b5d] animate-pulse [animation-delay:120ms]" />
+            <span className="size-2 rounded-full bg-[#1f6b5d] animate-pulse [animation-delay:240ms]" />
+          </div>
+          <p className="font-semibold text-[#667064] mt-3">Asking the AI to find spots near you...</p>
+          <p className="text-xs font-bold text-[#899083] mt-1">Usually 10-30 seconds. Agent will timeout at 45s if the model is slow.</p>
         </div>
       )}
 

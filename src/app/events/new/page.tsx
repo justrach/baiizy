@@ -157,7 +157,7 @@ export default function NewEventPage() {
         </section>
 
         {/* Venue */}
-        <section className="rounded-[2rem] border border-[#1b271f]/10 bg-[#fffaf0]/82 p-6 shadow-sm backdrop-blur">
+        <section className="relative z-40 rounded-[2rem] border border-[#1b271f]/10 bg-[#fffaf0]/82 p-6 shadow-sm backdrop-blur">
           <label className="block text-xs font-black uppercase tracking-[0.2em] text-[#8a6d2f] mb-2">Where?</label>
           <div ref={venueWrapperRef} className="relative">
             <input

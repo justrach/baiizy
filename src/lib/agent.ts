@@ -156,11 +156,25 @@ Pick the top 3-5 that best match the user's preferences. For each, explain the f
 
 Return a matchScore from 0-100 for each — weight categorical fit heaviest, then distance/area fit.`;
 
-  const { object } = await generateObject({
-    model: "moonshotai/kimi-k2.6",
-    schema: RecommendationSchema,
-    prompt,
-  });
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), 45000);
+  let object;
+  try {
+    const result = await generateObject({
+      model: "moonshotai/kimi-k2.6",
+      schema: RecommendationSchema,
+      prompt,
+      abortSignal: controller.signal,
+    });
+    object = result.object;
+  } catch (err) {
+    if (controller.signal.aborted) {
+      throw new Error("AI agent timed out after 45s — the model took too long. Try again.");
+    }
+    throw err;
+  } finally {
+    clearTimeout(t);
+  }
 
   // Merge AI output back with candidate coordinates so the frontend can display them
   const enriched = object.recommendations.map((r) => {

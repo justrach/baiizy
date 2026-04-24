@@ -62,7 +62,7 @@ export default function PicksTab() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [usingLive, setUsingLive] = useState<boolean | null>(null);
-  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [location, setLocation] = useState<{ lat: number; lng: number; source?: string; ageMinutes?: number | null; neighborhoodLabel?: string | null } | null>(null);
   const [recs, setRecs] = useState<Recommendation[]>([]);
   const [focusIntent, setFocusIntent] = useState<string | null>(null);
   const [sharingLocation, setSharingLocation] = useState(false);
@@ -143,9 +143,11 @@ export default function PicksTab() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ lat, lng }),
         });
-        setLocation({ lat, lng });
+        setLocation({ lat, lng, source: "live", ageMinutes: 0 });
         setLocationMsg(`✓ Location saved (${lat.toFixed(4)}, ${lng.toFixed(4)})`);
         setSharingLocation(false);
+        // Auto-refresh recommendations now that DB has fresh coords
+        if (recs.length > 0) fetchRecs(focusIntent ?? undefined);
       },
       (err) => {
         setLocationMsg(`Location denied: ${err.message}`);
@@ -256,9 +258,9 @@ export default function PicksTab() {
               {usingLive === null
                 ? "Not fetched yet"
                 : usingLive
-                ? "Using live GPS"
-                : "Using your onboarding neighborhood"}
-              {location && <span className="text-[#667064] text-xs ml-2">({location.lat.toFixed(3)}, {location.lng.toFixed(3)})</span>}
+                ? (<>Using live GPS {location?.ageMinutes != null && <span className="font-semibold text-[#667064]">· saved {location.ageMinutes === 0 ? "just now" : `${location.ageMinutes}m ago`}</span>}</>)
+                : (<>Using neighborhood {location?.neighborhoodLabel && <span className="font-semibold text-[#667064]">({location.neighborhoodLabel})</span>}</>)}
+              {location && <span className="block text-[0.62rem] font-mono font-bold text-[#899083] mt-0.5">{location.lat.toFixed(4)}, {location.lng.toFixed(4)}</span>}
             </p>
           </div>
           <button

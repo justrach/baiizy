@@ -104,8 +104,20 @@ const INTENT_LABEL: Record<string, string> = {
 };
 
 const MAX_CANDIDATES_TO_LLM = 10;
-const GRAB_LIMIT_PER_KEYWORD = 3;
+const GRAB_LIMIT_PER_KEYWORD = 6;
 const AGENT_TIMEOUT_MS = 20_000;
+const MAX_RADIUS_KM = 3;     // never return a "nearest" place further than this
+const MIN_CANDIDATES = 2;    // fewer close results is OK; don't pad with far ones
+
+function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const R = 6371;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((a.lat * Math.PI) / 180) * Math.cos((b.lat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
 
 export async function recommendPlaces(input: AgentInput) {
   const intents = input.focusIntent
@@ -114,23 +126,46 @@ export async function recommendPlaces(input: AgentInput) {
     ? input.intents.slice(0, 2)
     : ["friend"];
 
-  const candidates: Place[] = [];
+  // Fetch candidates
+  const rawCandidates: (Place & { sourceIntent?: string; distanceKm?: number })[] = [];
   const seen = new Set<string>();
   for (const intent of intents) {
-    const keywords = (INTENT_KEYWORDS[intent] ?? [intent]).slice(0, 2); // up to 2 keywords per intent
+    const keywords = (INTENT_KEYWORDS[intent] ?? [intent]).slice(0, 2);
     for (const keyword of keywords) {
       try {
         const list = await searchGrab(keyword, input.currentLat, input.currentLng, GRAB_LIMIT_PER_KEYWORD);
         for (const p of list) {
-          if (!seen.has(p.poi_id)) {
-            seen.add(p.poi_id);
-            candidates.push({ ...p, sourceIntent: intent } as Place & { sourceIntent: string });
-          }
+          if (seen.has(p.poi_id)) continue;
+          seen.add(p.poi_id);
+          const distanceKm =
+            p.lat !== null && p.lng !== null
+              ? haversineKm({ lat: input.currentLat, lng: input.currentLng }, { lat: p.lat as number, lng: p.lng as number })
+              : Infinity;
+          rawCandidates.push({ ...p, sourceIntent: intent, distanceKm });
         }
       } catch (e) {
         console.warn(`Grab search failed for "${keyword}":`, e);
       }
     }
+  }
+
+  if (rawCandidates.length === 0) {
+    return { recommendations: [], candidatesFound: 0 };
+  }
+
+  // Grab's keyword search ranks by relevance, not distance — apply a hard cap
+  // so we never recommend e.g. a Jurong spot to a user in Holland Village.
+  let candidates = rawCandidates
+    .filter((c) => c.distanceKm !== undefined && c.distanceKm <= MAX_RADIUS_KM)
+    .sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
+
+  if (candidates.length < MIN_CANDIDATES) {
+    // Below minimum — take the closest few even if they're beyond the cap, so we
+    // at least return something. Cap at 10km absolute max.
+    candidates = [...rawCandidates]
+      .sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity))
+      .filter((c) => (c.distanceKm ?? Infinity) <= 10)
+      .slice(0, MIN_CANDIDATES);
   }
 
   if (candidates.length === 0) {
@@ -139,10 +174,14 @@ export async function recommendPlaces(input: AgentInput) {
 
   const candidateText = candidates
     .slice(0, MAX_CANDIDATES_TO_LLM)
-    .map((c: Place & { sourceIntent?: string }, i) =>
-      `${i + 1}. [${c.poi_id}] ${c.name} (${c.category}) — ${c.neighborhood ?? ""} · tag:${c.sourceIntent ?? ""}`,
-    )
+    .map((c, i) => {
+      const dist = c.distanceKm !== undefined && c.distanceKm !== Infinity
+        ? `${c.distanceKm.toFixed(1)}km`
+        : "?";
+      return `${i + 1}. [${c.poi_id}] ${c.name} (${c.category}) — ${c.neighborhood ?? ""} · ${dist} · tag:${c.sourceIntent ?? ""}`;
+    })
     .join("\n");
+
 
   const focusLabel = INTENT_LABEL[intents[0]] ?? intents[0];
   const isFocus = !!input.focusIntent;

@@ -114,6 +114,7 @@ export default function FriendsMapPage() {
   const [seeding, setSeeding] = useState(false);
   const [usingFallback, setUsingFallback] = useState(false);
   const [fallbackReason, setFallbackReason] = useState("");
+  const [toast, setToast] = useState<string>("");
 
   const loadFriends = async () => {
     try {
@@ -234,19 +235,45 @@ export default function FriendsMapPage() {
             <span className="inline-block size-2 rounded-full bg-[#1f6b5d] animate-pulse" />
             <span className="text-xs font-black uppercase tracking-[0.22em] text-[#172019]">Live · Friends map</span>
           </div>
-          <button
-            onClick={async () => {
-              setSeeding(true);
-              const r = await fetch("/api/dev/seed-friends", { method: "POST" });
-              setSeeding(false);
-              if (r.ok) await loadFriends();
-            }}
-            disabled={seeding}
-            className="rounded-2xl bg-[#1f6b5d] px-3 py-2 text-xs font-black text-[#fffaf0] hover:bg-[#255f55] transition disabled:opacity-60"
-            title="Seed demo friends"
-          >
-            {seeding ? "..." : "🪄 Demo"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={async () => {
+                setToast("Refreshing…");
+                await loadFriends();
+                setToast("");
+              }}
+              className="rounded-2xl border border-[#1b271f]/10 px-3 py-2 text-xs font-black text-[#4b554c] hover:border-[#172019] hover:text-[#172019] transition"
+              title="Refresh friend locations"
+            >
+              ↻
+            </button>
+            <button
+              onClick={async () => {
+                setSeeding(true);
+                setToast("Summoning friends…");
+                try {
+                  const r = await fetch("/api/dev/seed-friends", { method: "POST" });
+                  const data = await r.json().catch(() => ({}));
+                  if (!r.ok) {
+                    setToast(`Seed failed: ${data?.error ?? r.status}`);
+                  } else {
+                    await loadFriends();
+                    setToast(`✓ Linked ${data.linked?.length ?? 0} friends`);
+                    setTimeout(() => setToast(""), 3500);
+                  }
+                } catch (e) {
+                  setToast(`Seed failed: ${e instanceof Error ? e.message : "network"}`);
+                } finally {
+                  setSeeding(false);
+                }
+              }}
+              disabled={seeding}
+              className="rounded-2xl bg-[#1f6b5d] px-3 py-2 text-xs font-black text-[#fffaf0] hover:bg-[#255f55] transition disabled:opacity-60"
+              title="Seed demo friends"
+            >
+              {seeding ? "…" : "🪄 Demo"}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -259,6 +286,15 @@ export default function FriendsMapPage() {
               Not GrabMaps · using OpenStreetMap fallback
             </span>
             {fallbackReason && <span className="text-[0.62rem] font-bold text-[#172019]/60 hidden sm:inline">({fallbackReason})</span>}
+          </div>
+        )}
+
+        {/* Toast / status message */}
+        {toast && (
+          <div className="flex items-center justify-center">
+            <div className="rounded-full bg-[#172019] px-4 py-2 text-xs font-black text-[#fffaf0] shadow-[0_8px_24px_rgba(23,32,25,0.25)]">
+              {toast}
+            </div>
           </div>
         )}
 
